@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "aaa-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "db1-aaa",
+      // ดูค่าได้จาก: npx wrangler d1 info db1-aaa
+      "database_id": "REPLACE_WITH_DB1_AAA_ID",
+      "migrations_dir": "./migrations"
+    }
+  ]
+  // Secrets (ตั้งด้วย `npx wrangler secret put <NAME>` ห้ามใส่ในไฟล์นี้):
+  //   JWT_SECRET  - key สำหรับเซ็น device JWT (HS256)
+  //   CRED_PEPPER - key สำหรับ HMAC ของ RFID / QR / PIN
+}
