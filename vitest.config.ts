@@ -10,7 +10,9 @@ export default defineConfig({
 				bindings: {
 					JWT_SECRET: "test-jwt-secret",
 					CRED_PEPPER: "test-pepper",
-					TEST_MIGRATIONS: await readD1Migrations(path.join(__dirname, "migrations")),
+					LINE_CHANNEL_ID: "1234567890",
+					ALLOWED_ORIGINS: "https://admin.example.com, https://liff.example.com",
+					TEST_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, "migrations")),
 				},
 			},
 		})),

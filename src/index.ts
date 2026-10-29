@@ -1,10 +1,24 @@
 import { decide, METHODS, normalizePlate, type Decision, type Method } from "./authorize";
 import { handleAdmin } from "./admin";
+import { handleOwner } from "./owner";
 import { JWT_ISS, safeEqual, sha256Hex, signJwt, verifyJwt } from "./crypto";
 import { isStr, json, readJson } from "./http";
 
 const JWT_AUD = "aaa-device";
 const TOKEN_TTL_SEC = 15 * 60;
+// กันสุ่ม PIN / Guest Code: ผิดเกิน N ครั้งใน 5 นาทีต่ออุปกรณ์ -> ปฏิเสธ PIN/QR ของอุปกรณ์นั้นชั่วคราว
+const MAX_FAILED_CODES = 10;
+const FAILED_CODE_WINDOW = "-5 minutes";
+
+async function tooManyFailedCodes(env: Env, deviceId: string): Promise<boolean> {
+	const failed = await env.DB.prepare(
+		`SELECT COUNT(*) AS n FROM tb_access_log
+		 WHERE device_id = ? AND timestamp > datetime('now', ?) AND reason_code = 'UNKNOWN_CREDENTIAL'`,
+	)
+		.bind(deviceId, FAILED_CODE_WINDOW)
+		.first<number>("n");
+	return (failed ?? 0) >= MAX_FAILED_CODES;
+}
 
 interface DeviceRow {
 	project_id: string;
@@ -85,7 +99,10 @@ async function authorize(req: Request, env: Env): Promise<Response> {
 		policyVersion = await env.DB.prepare("SELECT policy_version FROM tb_project WHERE project_id = ?")
 			.bind(projectId)
 			.first<number>("policy_version");
-		result = await decide(env, projectId, method, body.value);
+		const locked = (method === "PIN" || method === "QRCODE") && (await tooManyFailedCodes(env, claims.sub));
+		result = locked
+			? { decision: "NO", reason_code: "TOO_MANY_ATTEMPTS", allowed_methods: [] }
+			: await decide(env, projectId, method, body.value);
 	} catch (err) {
 		console.error("authorize failed", eventId, err);
 		result = { decision: "ERROR", reason_code: "INTERNAL_ERROR", allowed_methods: [] };
@@ -133,12 +150,35 @@ const respond = (
 	policy_version: number | null,
 ) => json({ event_id: eventId, decision, reason_code, allowed_methods, policy_version }, decision === "ERROR" ? 500 : 200);
 
+// API ที่เรียกจาก browser (Admin WebApp บน Pages, LINE LIFF) ต้องมี CORS
+const BROWSER_API_PREFIXES = ["/api/v1/admin/", "/api/v1/owner/"];
+
+function withCors(req: Request, env: Env, res: Response): Response {
+	const origin = req.headers.get("Origin");
+	const allowed = env.ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+	if (origin && allowed.includes(origin)) {
+		res.headers.set("Access-Control-Allow-Origin", origin);
+		res.headers.set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE");
+		res.headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+		res.headers.set("Access-Control-Max-Age", "86400");
+	}
+	res.headers.append("Vary", "Origin");
+	return res;
+}
+
+async function route(req: Request, env: Env, pathname: string): Promise<Response> {
+	if (req.method === "POST" && pathname === "/api/v1/auth/device/token") return issueDeviceToken(req, env);
+	if (req.method === "POST" && pathname === "/api/v1/access/authorize") return authorize(req, env);
+	if (pathname.startsWith("/api/v1/admin/")) return handleAdmin(req, env);
+	if (pathname.startsWith("/api/v1/owner/")) return handleOwner(req, env);
+	return json({ error: "NOT_FOUND" }, 404);
+}
+
 export default {
 	async fetch(req, env): Promise<Response> {
 		const { pathname } = new URL(req.url);
-		if (req.method === "POST" && pathname === "/api/v1/auth/device/token") return issueDeviceToken(req, env);
-		if (req.method === "POST" && pathname === "/api/v1/access/authorize") return authorize(req, env);
-		if (pathname.startsWith("/api/v1/admin/")) return handleAdmin(req, env);
-		return json({ error: "NOT_FOUND" }, 404);
+		if (!BROWSER_API_PREFIXES.some((p) => pathname.startsWith(p))) return route(req, env, pathname);
+		if (req.method === "OPTIONS") return withCors(req, env, new Response(null, { status: 204 }));
+		return withCors(req, env, await route(req, env, pathname));
 	},
 } satisfies ExportedHandler<Env>;

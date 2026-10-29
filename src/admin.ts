@@ -1,6 +1,22 @@
+import { auditTarget, writeAudit } from "./audit";
 import { credentialHash, normalizePlate, type Method } from "./authorize";
-import { JWT_ISS, signJwt, verifyJwt, verifyPassword } from "./crypto";
-import { isStr, json, readJson } from "./http";
+import { JWT_ISS, sha256Hex, signJwt, verifyJwt, verifyPassword } from "./crypto";
+import { COMMON_AREA_PREFIX, HOUSE_CODE_RE, issueGuest, listVisitors, revokeVisitor } from "./guest";
+import {
+	badField,
+	type Body,
+	errorResponse,
+	HttpError,
+	isStr,
+	isUniqueViolation,
+	json,
+	notFound,
+	optBool,
+	optEnum,
+	optStr,
+	readJson,
+	reqStr,
+} from "./http";
 
 const ADMIN_AUD = "aaa-admin";
 const ADMIN_TTL_SEC = 60 * 60;
@@ -10,54 +26,24 @@ const DUMMY_HASH = `pbkdf2_sha256$100000$${"00".repeat(16)}$${"00".repeat(32)}`;
 const PAYMENT_STATUSES = ["NORMAL", "OVERDUE", "OVERDUE_SEVERE"];
 const ADMIN_CRED_TYPES: Method[] = ["RFID", "QRCODE", "PIN"];
 
-class HttpError extends Error {
-	constructor(
-		readonly status: number,
-		readonly code: string,
-		readonly field?: string,
-	) {
-		super(code);
-	}
-}
-const badField = (field: string) => new HttpError(400, "BAD_REQUEST", field);
-const notFound = () => new HttpError(404, "NOT_FOUND");
-
-type Body = Record<string, unknown>;
-
 interface Ctx {
 	env: Env;
+	adminId: string;
 	pid: string; // project_id ของ admin ที่ login ทุก query ต้องกรองด้วยค่านี้
 	id: string;
 	body: Body;
 	url: URL;
 }
 
-function reqStr(body: Body, name: string, max: number): string {
-	const v = body[name];
-	if (!isStr(v, max)) throw badField(name);
-	return v;
-}
-
-// undefined = ไม่ได้ส่งมา (ไม่แก้), null = ล้างค่า
-function optStr(body: Body, name: string, max: number): string | null | undefined {
-	const v = body[name];
-	if (v === undefined || v === null) return v;
-	if (!isStr(v, max)) throw badField(name);
-	return v;
-}
-
-function optEnum(body: Body, name: string, allowed: readonly string[]): string | undefined {
-	const v = body[name];
-	if (v === undefined) return undefined;
-	if (typeof v !== "string" || !allowed.includes(v)) throw badField(name);
-	return v;
-}
-
 function optActive(body: Body): number | undefined {
-	const v = body.is_active;
-	if (v === undefined) return undefined;
-	if (typeof v !== "boolean") throw badField("is_active");
-	return v ? 1 : 0;
+	const v = optBool(body, "is_active");
+	return v === undefined ? undefined : v ? 1 : 0;
+}
+
+function optHouseCode(body: Body): string | null | undefined {
+	const v = optStr(body, "house_code", 6);
+	if (v && !HOUSE_CODE_RE.test(v)) throw badField("house_code");
+	return v;
 }
 
 function optDate(body: Body, name: string): string | null | undefined {
@@ -65,8 +51,6 @@ function optDate(body: Body, name: string): string | null | undefined {
 	if (v && Number.isNaN(Date.parse(v))) throw badField(name);
 	return v;
 }
-
-const isUniqueViolation = (err: unknown) => String(err).includes("UNIQUE constraint failed");
 
 // table / column มาจากโค้ดเท่านั้น ห้ามรับจาก request
 async function patchRow(c: Ctx, table: string, idCol: string, sets: Record<string, unknown>) {
@@ -87,7 +71,7 @@ async function requireRow(c: Ctx, table: string, idCol: string, id: string) {
 
 // ---------- Houses ----------
 
-const HOUSE_COLS = "house_id, house_number, zone_or_soi, payment_status, is_active, update_date";
+const HOUSE_COLS = "house_id, house_number, house_code, zone_or_soi, payment_status, is_active, update_date";
 
 async function listHouses(c: Ctx) {
 	const { results } = await c.env.DB.prepare(`SELECT ${HOUSE_COLS} FROM tb_house WHERE project_id = ? ORDER BY house_number`)
@@ -98,8 +82,8 @@ async function listHouses(c: Ctx) {
 
 async function createHouse(c: Ctx) {
 	const houseId = crypto.randomUUID();
-	await c.env.DB.prepare("INSERT INTO tb_house (house_id, project_id, house_number, zone_or_soi) VALUES (?, ?, ?, ?)")
-		.bind(houseId, c.pid, reqStr(c.body, "house_number", 32), optStr(c.body, "zone_or_soi", 64) ?? null)
+	await c.env.DB.prepare("INSERT INTO tb_house (house_id, project_id, house_number, house_code, zone_or_soi) VALUES (?, ?, ?, ?, ?)")
+		.bind(houseId, c.pid, reqStr(c.body, "house_number", 32), optHouseCode(c.body) ?? null, optStr(c.body, "zone_or_soi", 64) ?? null)
 		.run();
 	return json({ house_id: houseId }, 201);
 }
@@ -107,6 +91,7 @@ async function createHouse(c: Ctx) {
 async function updateHouse(c: Ctx) {
 	await patchRow(c, "tb_house", "house_id", {
 		house_number: c.body.house_number === undefined ? undefined : reqStr(c.body, "house_number", 32),
+		house_code: optHouseCode(c.body),
 		zone_or_soi: optStr(c.body, "zone_or_soi", 64),
 		payment_status: optEnum(c.body, "payment_status", PAYMENT_STATUSES),
 		is_active: optActive(c.body),
@@ -224,6 +209,13 @@ async function addCredential(c: Ctx) {
 	if (!credType) throw badField("cred_type");
 	const value = reqStr(c.body, "value", 256);
 	if (credType === "PIN" && !/^\d{4,8}$/.test(value)) throw badField("value");
+	// PIN ห้ามชนกับ Guest Code เพราะ Keypad ส่งมาเป็น method PIN เหมือนกัน
+	if (credType === "PIN") {
+		const guestClash = await c.env.DB.prepare("SELECT 1 FROM tb_credential WHERE project_id = ? AND cred_type = 'GUEST' AND cred_hash = ?")
+			.bind(c.pid, await credentialHash(c.env.CRED_PEPPER, c.pid, "GUEST", value))
+			.first();
+		if (guestClash) throw new HttpError(409, "CREDENTIAL_EXISTS", "value");
+	}
 
 	const credentialId = crypto.randomUUID();
 	try {
@@ -253,6 +245,53 @@ async function revokeCredential(c: Ctx) {
 	return json({ credential_id: c.id, id_status: "REVOKED" });
 }
 
+// ---------- LINE link code ----------
+
+const LINK_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const LINK_CODE_TTL = "+1 day";
+
+// รหัสครั้งเดียวให้ลูกบ้านกรอกใน LIFF เพื่อผูกบัญชี LINE กับ tb_user
+async function createLinkCode(c: Ctx) {
+	const code = [...crypto.getRandomValues(new Uint8Array(8))].map((b) => LINK_CODE_ALPHABET[b % 32]).join("");
+	const res = await c.env.DB.prepare(
+		`UPDATE tb_user SET link_code_hash = ?, link_code_expires = datetime('now', ?)
+		 WHERE user_id = ? AND project_id = ? AND is_active = 1`,
+	)
+		.bind(await sha256Hex(code), LINK_CODE_TTL, c.id, c.pid)
+		.run();
+	if (res.meta.changes === 0) throw notFound();
+	return json({ user_id: c.id, link_code: code, expires_in: 86_400 }, 201);
+}
+
+// ---------- Visitors ----------
+
+async function adminListVisitors(c: Ctx) {
+	const houseId = c.url.searchParams.get("house_id") ?? undefined;
+	const visitors = await listVisitors(c.env, c.pid, houseId, c.url.searchParams.get("valid") === "1");
+	return json({ visitors });
+}
+
+// house_id ไม่ส่ง / null = ผู้เยี่ยมชมงานส่วนกลาง (Guest Code ขึ้นต้นด้วย 0)
+async function adminCreateVisitor(c: Ctx) {
+	const houseId = optStr(c.body, "house_id", 64) ?? null;
+	let prefix = COMMON_AREA_PREFIX;
+	if (houseId) {
+		const house = await c.env.DB.prepare("SELECT house_code FROM tb_house WHERE house_id = ? AND project_id = ?")
+			.bind(houseId, c.pid)
+			.first<{ house_code: string | null }>();
+		if (!house) throw notFound();
+		if (!house.house_code) throw new HttpError(409, "HOUSE_CODE_MISSING", "house_id");
+		prefix = house.house_code;
+	}
+	const issueCode = optBool(c.body, "issue_code") ?? true;
+	return json(await issueGuest(c.env, c.pid, { houseId, prefix, issuedBy: "ADMIN", issuedById: c.adminId, issueCode }, c.body), 201);
+}
+
+async function adminRevokeVisitor(c: Ctx) {
+	await revokeVisitor(c.env, c.pid, c.id);
+	return json({ visitor_id: c.id, id_status: "REVOKED" });
+}
+
 // ---------- Routing / Auth ----------
 
 const route = (method: string, path: string, handler: (c: Ctx) => Promise<Response>) => ({
@@ -274,6 +313,10 @@ const ROUTES = [
 	route("DELETE", "/vehicles/:id", removeVehicle),
 	route("POST", "/residents/:id/credentials", addCredential),
 	route("DELETE", "/credentials/:id", revokeCredential),
+	route("POST", "/residents/:id/link-code", createLinkCode),
+	route("GET", "/visitors", adminListVisitors),
+	route("POST", "/visitors", adminCreateVisitor),
+	route("DELETE", "/visitors/:id", adminRevokeVisitor),
 ];
 
 interface AdminRow {
@@ -308,6 +351,7 @@ async function login(req: Request, env: Env): Promise<Response> {
 		iat: now,
 		exp: now + ADMIN_TTL_SEC,
 	});
+	await writeAudit(env, admin.project_id, "ADMIN", admin.admin_id, "LOGIN", admin.admin_id, {});
 	return json({ access_token: token, token_type: "Bearer", expires_in: ADMIN_TTL_SEC });
 }
 
@@ -331,9 +375,13 @@ export async function handleAdmin(req: Request, env: Env): Promise<Response> {
 
 	try {
 		const id = decodeURIComponent(match.m.pathname.groups.id ?? "");
-		return await match.r.handler({ env, pid: admin.project_id, id, body, url });
+		const res = await match.r.handler({ env, adminId: admin.admin_id, pid: admin.project_id, id, body, url });
+		if (req.method !== "GET" && res.ok) {
+			const action = `${req.method} ${match.r.pattern.pathname}`;
+			await writeAudit(env, admin.project_id, "ADMIN", admin.admin_id, action, await auditTarget(res, id), body);
+		}
+		return res;
 	} catch (err) {
-		if (err instanceof HttpError) return json({ error: err.code, field: err.field }, err.status);
-		throw err;
+		return errorResponse(err);
 	}
 }

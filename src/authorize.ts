@@ -2,6 +2,8 @@ import { hmacHex } from "./crypto";
 
 export const METHODS = ["ANPR", "RFID", "QRCODE", "PIN"] as const;
 export type Method = (typeof METHODS)[number];
+// GUEST = Guest Code ของผู้เยี่ยมชม ใช้ได้ทั้ง QRCODE และ PIN (Keypad) ด้วยเลขเดียวกัน
+export type CredType = Method | "GUEST";
 export type Subject = "RESIDENT" | "RESIDENT_OVERDUE" | "RESIDENT_OVERDUE_SEVERE" | "VISITOR";
 
 export interface Decision {
@@ -29,8 +31,14 @@ const residentSubject = (paymentStatus: string | null): Subject =>
 export const normalizePlate = (plate: string) => plate.replace(/[\s-]/g, "").toUpperCase();
 
 // ค่าเดียวกันนี้ต้องใช้ตอนลงทะเบียน credential ใน tb_credential.cred_hash
-export const credentialHash = (pepper: string, projectId: string, method: Method, value: string) =>
-	hmacHex(pepper, `${projectId}:${method}:${value}`);
+export const credentialHash = (pepper: string, projectId: string, credType: CredType, value: string) =>
+	hmacHex(pepper, `${projectId}:${credType}:${value}`);
+
+// Guest Code "9801+1234" -> "98011234" ตัด + * # ช่องว่าง - ที่ Keypad / QR อาจส่งมา
+export function guestDigits(value: string): string | null {
+	const digits = value.replace(/[+*#\s-]/g, "");
+	return /^\d{5,10}$/.test(digits) ? digits : null;
+}
 
 export async function decide(env: Env, projectId: string, method: Method, value: string): Promise<Decision> {
 	const who =
@@ -98,9 +106,8 @@ interface CredentialRow {
 	visitor_valid: number;
 }
 
-async function identifyCredential(env: Env, projectId: string, method: Method, value: string): Promise<Identity> {
-	const hash = await credentialHash(env.CRED_PEPPER, projectId, method, value);
-	const c = await env.DB.prepare(
+const findCredential = async (env: Env, projectId: string, credType: CredType, value: string) =>
+	env.DB.prepare(
 		`SELECT c.credential_id, c.user_id, c.is_active, c.id_status, c.max_uses, c.use_count,
 		   (c.valid_from IS NULL OR datetime(c.valid_from) <= datetime('now')) AS started,
 		   (c.valid_until IS NULL OR datetime(c.valid_until) >= datetime('now')) AS not_expired,
@@ -112,8 +119,13 @@ async function identifyCredential(env: Env, projectId: string, method: Method, v
 		 LEFT JOIN tb_visitor vis ON vis.visitor_id = c.visitor_id
 		 WHERE c.project_id = ? AND c.cred_type = ? AND c.cred_hash = ?`,
 	)
-		.bind(projectId, method, hash)
+		.bind(projectId, credType, await credentialHash(env.CRED_PEPPER, projectId, credType, value))
 		.first<CredentialRow>();
+
+async function identifyCredential(env: Env, projectId: string, method: Method, value: string): Promise<Identity> {
+	let c = await findCredential(env, projectId, method, value);
+	const digits = !c && (method === "QRCODE" || method === "PIN") ? guestDigits(value) : null;
+	if (digits) c = await findCredential(env, projectId, "GUEST", digits);
 
 	if (!c) return { reason: "UNKNOWN_CREDENTIAL" };
 	if (c.is_active !== 1 || c.id_status === "REVOKED") return { reason: "CREDENTIAL_REVOKED" };

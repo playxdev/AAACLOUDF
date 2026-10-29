@@ -3,8 +3,11 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.1 (Working Draft)
+-   **เวอร์ชัน:** 1.2 (Working Draft)
 -   **วันที่:** 2026-10-30
+-   **1.2:** Visitor / Guest Code (`<house_code>+xxxx` ใช้ได้ทั้ง QR และ Keypad),
+    Owner API ผ่าน LINE LIFF, Admin WebApp บน Cloudflare Pages (CORS),
+    Visitor งานส่วนกลาง, Audit Log และกันสุ่มรหัสที่ Keypad (§6, §7, §8, §12)
 -   **1.1 (เพิ่มเติม):** Admin API จัดการบ้าน/ลูกบ้าน/รถ/บัตร/PIN (§8.1)
 -   **1.1:** Backend เปลี่ยนจาก Golang เป็น TypeScript บน Cloudflare Workers +
     D1; API ตรวจสิทธิ์รวมเป็น endpoint เดียว (§8); เพิ่ม Data Model (§8.5);
@@ -30,6 +33,13 @@ AAA (Axis Auto Access) เป็นระบบควบคุมการเข
     ฐานข้อมูลลูกบ้าน/รถ/ผู้เยี่ยมชม, Authorization Policy และ Access Logs
 2.  **SEMA Package --- ทีม Hardware/Embedded:** ส่งมอบ Docker/API
     สำหรับสื่อสารกับ SEMA Microcontroller และควบคุมอุปกรณ์หน้างาน
+
+ผู้ใช้ฝั่ง AAA มี 2 ช่องทาง:
+
+-   **Admin WebApp (Cloudflare Pages):** นิติบุคคล/Admin จัดการบ้าน, ลูกบ้าน, รถ,
+    บัตร/PIN, ค้างชำระ และ Visitor รวมถึงผู้เยี่ยมชมงานส่วนกลาง
+-   **LINE LIFF (ลูกบ้าน/เจ้าของบ้าน):** ออก Guest Code ให้แขก / Rider / ผู้ส่งของ
+    และเพิกถอนเองได้
 
 ## 2. ภาพรวมอุปกรณ์หน้างาน
 
@@ -182,6 +192,21 @@ flowchart TB
 5.  เมื่อ `YES` และ Safety Conditions ผ่าน SEMA สั่ง `OPEN`
 6.  ส่ง `GATE STATUS`, `LOG` และผลการทำงานกลับ Backend
 
+### 6.1 Guest Code (Visitor / Rider / ผู้ส่งของ)
+
+1.  ลูกบ้านออกโค้ดใน LINE LIFF เลือกอายุ 1 วัน / 7 วัน / 14 วัน / 30 วัน / 1 ปี /
+    ตลอดไป (100 ปี) หรือ Admin ออกให้งานส่วนกลาง
+2.  ได้โค้ดรูปแบบ `<house_code>+<สุ่ม 4 หลัก>` เช่น `9801+1234` (งานส่วนกลาง
+    ขึ้นต้น `0+`) แชร์ให้แขกเป็น QR หรือเป็นตัวเลข
+3.  แขกสแกน QR (`QRCODE` = `9801+1234`) หรือกด Keypad (`PIN` = `98011234`)
+    ที่ไม้กั้น SEMA ส่งมาที่ `/api/v1/access/authorize` ตามปกติ
+4.  Backend ตรวจโค้ด, ช่วงเวลา, สถานะเพิกถอน แล้วตอบ `YES / NO`
+    พร้อมบันทึก `tb_access_log`
+5.  ลูกบ้านเพิกถอนได้ทุกเมื่อ มีผลทันที
+
+ข้อจำกัด: ส่วนสุ่มมีแค่ 4 หลัก (10,000 แบบต่อบ้าน) จึงมีกันสุ่มรหัส: อุปกรณ์ที่ส่ง
+PIN/QR ผิดครบ 10 ครั้งใน 5 นาทีจะถูกปฏิเสธ PIN/QR ชั่วคราว (`TOO_MANY_ATTEMPTS`)
+
 ข้อกำหนดความปลอดภัย: - ไม่บันทึก PIN หรือ Secret แบบ Plaintext - QR สำหรับ
 Visitor ต้องมี Token ที่คาดเดาไม่ได้, ช่วงเวลาใช้งาน, สถานะเพิกถอน
 และข้อจำกัดการใช้งานตาม Policy - การใช้ Credential
@@ -202,9 +227,9 @@ Visitor ต้องมี Token ที่คาดเดาไม่ได้, 
   Resident ค้างชำระ  ปฏิเสธ ANPR                   อนุญาตเฉพาะ PIN (Keypad)  ต้องลงมากด Keypad;
   ต่อเนื่อง                                                                   `payment_status = OVERDUE_SEVERE`
 
-  Visitor           ปฏิเสธทะเบียนที่ไม่รู้จักโดยอัตโนมัติ   ใช้ QR/Credential         อนุญาตทะเบียน Visitor
-                                                 ที่ได้รับอนุมัติและยังไม่หมดอายุ   อัตโนมัติได้เฉพาะเมื่อกำหนด
-                                                                          Policy ชัดเจน
+  Visitor           ปฏิเสธทะเบียนที่ไม่รู้จักโดยอัตโนมัติ   Guest Code ผ่าน QR       อนุญาตทะเบียน Visitor
+                                                 หรือ Keypad ที่ยังไม่      อัตโนมัติได้เฉพาะเมื่อกำหนด
+                                                 หมดอายุ/ไม่ถูกเพิกถอน      Policy ชัดเจน
 
   Credential        ปฏิเสธ                        ปฏิเสธ                    บันทึกเหตุผล
   หมดอายุ/ถูกเพิกถอน                                                         
@@ -236,8 +261,18 @@ Endpoint ที่ระบุ "พัฒนาแล้ว" มีอยู่�
 
   `*`                     `/api/v1/admin/houses`,                 **พัฒนาแล้ว** จัดการบ้าน
                           `/residents`, `/vehicles`,              (ค้างชำระ), ลูกบ้าน, รถ
-                          `/credentials`                          และบัตร/PIN แยกตามโครงการ
+                          `/credentials`, `/visitors`,            และบัตร/PIN, Visitor
+                          `/residents/:id/link-code`              (รวมงานส่วนกลาง), รหัสผูก
+                                                                  LINE แยกตามโครงการ
                                                                   (ดู `README.md`)
+
+  `POST`                  `/api/v1/owner/link`,                   **พัฒนาแล้ว** ลูกบ้าน login
+                          `/api/v1/owner/login`                   ด้วย LIFF ID Token
+                                                                  → JWT 1 ชั่วโมง
+
+  `*`                     `/api/v1/owner/me`,                     **พัฒนาแล้ว** ลูกบ้านออก /
+                          `/api/v1/owner/visitors`                ดู / เพิกถอน Guest Code
+                                                                  ของบ้านตัวเอง
 
   `POST`                  `/api/v1/access/events`                 ข้อเสนอ: รับ Command
                                                                   Result / Gate Status
@@ -292,23 +327,25 @@ Header `Authorization: Bearer <JWT>` --- `device_id` และ `project_id`
 
 ### 8.5 Data Model (Cloudflare D1)
 
-Schema ทั้งหมดอยู่ไฟล์เดียว: `migrations/0001_init.sql` (v1.1.0)
+Schema = `migrations/0001_init.sql` (v1.1.0) + `migrations/0002_visitor_owner.sql`
 
   Table             เก็บอะไร
   ----------------- ------------------------------------------------------------
   `tb_project`      โครงการ/หมู่บ้าน + `policy_version`
   `tb_house`        บ้านเลขที่ + `payment_status` (NORMAL / OVERDUE /
-                    OVERDUE_SEVERE)
-  `tb_user`         ลูกบ้าน
+                    OVERDUE_SEVERE) + `house_code` (ตัวเลข ใช้นำหน้า Guest Code)
+  `tb_user`         ลูกบ้าน + `line_user_id` (ผูก LINE LIFF), รหัสผูกบัญชี (hash)
   `tb_admin`        ผู้ดูแลระบบ (1 คน = 1 โครงการ) รหัสผ่านเก็บเป็น PBKDF2-SHA256
   `tb_vehicle`      รถของลูกบ้าน (ทะเบียนเก็บแบบไม่มีช่องว่างและ `-`)
   `tb_device`       อุปกรณ์ SEMA + `device_secret_hash`, `direction`, `last_seen`
   `tb_access_log`   ทุกการตัดสินสิทธิ์: `method`, `decision`, `reason_code`,
                     `policy_version`, `credential_ref` (`log_id` = `event_id`)
   `tb_blacklist`    ทะเบียนต้องห้าม
-  `tb_visitor`      ผู้เยี่ยมชม + ช่วงเวลาที่อนุญาต
-  `tb_credential`   RFID / QRCODE / PIN เก็บเป็น HMAC-SHA256 เท่านั้น, วันหมดอายุ,
-                    `max_uses`, สถานะเพิกถอน
+  `tb_visitor`      ผู้เยี่ยมชม + ช่วงเวลาที่อนุญาต, `purpose`, ผู้ออก (ADMIN/OWNER);
+                    `house_id` NULL = งานส่วนกลาง
+  `tb_credential`   RFID / QRCODE / PIN / GUEST เก็บเป็น HMAC-SHA256 เท่านั้น,
+                    วันหมดอายุ, `max_uses`, สถานะเพิกถอน
+  `tb_audit_log`    การกระทำของ Admin / Owner (ไม่มีรหัสผ่าน / credential)
   `tb_policy`       กลุ่ม (RESIDENT / RESIDENT_OVERDUE /
                     RESIDENT_OVERDUE_SEVERE / VISITOR) x วิธีเข้า;
                     ไม่มีแถว = ไม่อนุญาต
@@ -379,6 +416,9 @@ Schema ทั้งหมดอยู่ไฟล์เดียว: `migrations
 
 ห้ามบันทึก PIN, JWT, Device Secret หรือข้อมูลลับลง Log แบบ Plaintext
 
+การกระทำของ Admin และลูกบ้าน (สร้าง/แก้/ลบ, login, ผูก LINE, ออก/เพิกถอน Guest Code)
+บันทึกใน `tb_audit_log` พร้อมผู้กระทำและเป้าหมาย โดยตัดค่าลับออก
+
 ## 13. Test / Acceptance Checklist
 
 ### Software
@@ -394,6 +434,10 @@ Schema ทั้งหมดอยู่ไฟล์เดียว: `migrations
 -   [ ] Admin โครงการหนึ่งอ่าน/แก้ข้อมูลของอีกโครงการไม่ได้ และ Device Token
     ใช้เรียก Admin API ไม่ได้
 -   [ ] Admin API ไม่คืนค่าจริงหรือ hash ของ RFID / QR / PIN
+-   [ ] Guest Code ใช้ได้ทั้ง QR และ Keypad, หมดอายุตามระยะที่เลือก, เพิกถอนแล้วใช้ไม่ได้
+-   [ ] ลูกบ้านเห็น/เพิกถอนได้เฉพาะ Visitor ของบ้านตัวเอง
+-   [ ] กดรหัสผิดซ้ำที่ Keypad ถูกล็อก PIN/QR ชั่วคราว แต่ ANPR/RFID ยังใช้ได้
+-   [ ] Audit Log ครบทุกการแก้ไข และไม่มีค่าลับ
 
 ### Hardware / Site
 
@@ -425,12 +469,16 @@ Schema ทั้งหมดอยู่ไฟล์เดียว: `migrations
 12. เกณฑ์เลื่อนระดับค้างชำระ (NORMAL → OVERDUE → OVERDUE_SEVERE): จำนวนวัน
     และใครเป็นผู้แก้ `payment_status` (ตอนนี้ Admin/ระบบบิลแก้เอง)
 13. (Idea) แจ้งเตือน LINE ถึงเจ้าของบ้านเมื่อ ANPR ถูกปฏิเสธเพราะค้างชำระ:
-    ต้องเก็บ LINE `userId` จากการผูกบัญชีกับ LINE OA (ใช้ `line_id` ไม่ได้),
-    ระบุเจ้าของบ้านใน `tb_user`, จำกัดไม่เกิน 1 ครั้ง/บ้าน/วัน และส่งแบบ
-    async ไม่ให้หน่วงการตอบ SEMA
-14. Admin API: ต้องมี Audit Log ของการแก้ไขโดย Admin, Rate Limit ที่
-    `/api/v1/admin/login` (WAF) และ API สำหรับ Visitor / Policy / Blacklist /
-    Device ที่ยังไม่ได้ทำ
+    LINE `userId` เก็บแล้วใน `tb_user.line_user_id` (จากการผูกบัญชีผ่าน LIFF)
+    เหลือ: ใช้ Messaging API ของ LINE OA ที่ LIFF อยู่, จำกัดไม่เกิน
+    1 ครั้ง/บ้าน/วัน และส่งแบบ async ไม่ให้หน่วงการตอบ SEMA
+14. Admin API: Rate Limit ที่ `/api/v1/admin/login` (WAF) และ API สำหรับ
+    Policy / Blacklist / Device ที่ยังไม่ได้ทำ
+15. Guest Code: ส่วนสุ่ม 4 หลักตามที่กำหนด คาดเดาได้ง่ายกว่า QR แบบสุ่มยาว
+    ยืนยันว่ายอมรับความเสี่ยงนี้ และเกณฑ์ล็อก (10 ครั้ง / 5 นาที / อุปกรณ์)
+    ลูกบ้านค้างชำระยังออก Guest Code ได้หรือไม่ (ตอนนี้ได้)
+16. Admin WebApp (Pages) และ LIFF app ยังไม่ได้พัฒนา ต้องกำหนด origin จริงใน
+    `ALLOWED_ORIGINS`
 
 ## 15. เอกสารส่งมอบที่ควรแยกกัน
 

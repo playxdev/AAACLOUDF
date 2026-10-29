@@ -5,6 +5,8 @@ Backend ตรวจสิทธิ์เข้า-ออกหมู่บ้�
 
 ```
 SEMA Microcontroller --(4G/5G)--> SEMA Docker (Java) --HTTPS--> AAA API (Workers) --> D1
+Admin WebApp (Cloudflare Pages) ----------------------HTTPS--> /api/v1/admin/*
+LINE LIFF (ลูกบ้าน / เจ้าของบ้าน) ----------------------HTTPS--> /api/v1/owner/*
 ```
 
 SEMA (Docker, Microcontroller, ไม้กั้น, Offline Mode) เป็น Blackbox สำหรับ repo นี้
@@ -18,21 +20,26 @@ SEMA (Docker, Microcontroller, ไม้กั้น, Offline Mode) เป็น
 | Database | Cloudflare D1 (`db1-aaa`) |
 | Auth อุปกรณ์ | Device secret (SHA-256) → JWT HS256 อายุ 15 นาที |
 | Auth Admin | รหัสผ่าน PBKDF2-SHA256 (100,000 รอบ) → JWT HS256 อายุ 1 ชั่วโมง |
-| Credential | RFID / QR / PIN เก็บเป็น HMAC-SHA256 เท่านั้น |
+| Auth Owner | LINE LIFF ID Token (ตรวจกับ LINE) → JWT HS256 อายุ 1 ชั่วโมง |
+| Credential | RFID / QR / PIN / Guest Code เก็บเป็น HMAC-SHA256 เท่านั้น |
 | Test | Vitest + `@cloudflare/vitest-plugin` (รันใน workerd + D1 local) |
 
-ไม่มี runtime dependency ภายนอก
+ไม่มี runtime dependency ภายนอก (เรียก LINE แค่ตอนตรวจ ID Token ที่ `/owner/login` และ `/owner/link`)
 
 ## โครงสร้าง
 
 ```
 src/index.ts                 routing, device token, authorize endpoint, audit log
 src/authorize.ts             ตัดสินสิทธิ์ (ANPR / credential / policy)
-src/admin.ts                 Admin API: login, บ้าน, ลูกบ้าน, รถ, บัตร/PIN
+src/admin.ts                 Admin API: login, บ้าน, ลูกบ้าน, รถ, บัตร/PIN, Visitor, รหัสผูก LINE
+src/owner.ts                 Owner API (LINE LIFF): login, ผูกบัญชี, ออก / เพิกถอน Guest Code
+src/guest.ts                 ออก Guest Code / Visitor (ใช้ร่วมกัน admin + owner)
+src/audit.ts                 tb_audit_log ของการกระทำโดย admin / owner
 src/crypto.ts                SHA-256, HMAC, JWT, PBKDF2 (WebCrypto)
 src/http.ts                  helper ของ request / response
 scripts/hash-password.mjs    สร้าง hash รหัสผ่าน admin
-migrations/0001_init.sql     D1 schema ทั้งหมด (v1.1.0)
+migrations/0001_init.sql     D1 schema ตั้งต้น (v1.1.0)
+migrations/0002_visitor_owner.sql  Visitor งานส่วนกลาง, house_code, ผูก LINE, audit log
 seeds/default_policy.sql     policy ตั้งต้นของทุกโครงการ
 test/                        integration tests
 SYSTEM/                      เอกสาร architecture + ภาพ flow
@@ -46,12 +53,13 @@ npx wrangler login
 npx wrangler d1 info db1-aaa          # copy database_id ไปใส่ wrangler.jsonc
 npx wrangler secret put JWT_SECRET    # key เซ็น device JWT
 npx wrangler secret put CRED_PEPPER   # key HMAC ของ RFID / QR / PIN (ห้ามเปลี่ยนหลังลงทะเบียน credential แล้ว)
+# แก้ vars ใน wrangler.jsonc: ALLOWED_ORIGINS (origin ของ Pages + LIFF), LINE_CHANNEL_ID (LINE Login channel ของ LIFF)
 npx wrangler d1 migrations apply db1-aaa --remote
 npm run deploy
 ```
 
-Schema ทั้งหมดอยู่ไฟล์เดียว: `migrations/0001_init.sql` (v1.1.0) แก้ schema ครั้งต่อไปให้สร้างไฟล์
-migration ใหม่ (`npx wrangler d1 migrations create db1-aaa <name>`) ห้ามแก้ 0001 หลัง apply ขึ้น remote แล้ว
+Schema = `migrations/0001_init.sql` (v1.1.0) + `0002_visitor_owner.sql` ตามลำดับ แก้ schema ครั้งต่อไปให้สร้างไฟล์
+migration ใหม่ (`npx wrangler d1 migrations create db1-aaa <name>`) ห้ามแก้ไฟล์ที่ apply ขึ้น remote แล้ว
 
 ถ้า `db1-aaa` เคยรัน `schema.sql` v1.0.0 เดิมด้วย `d1 execute` ไปแล้ว `migrations apply` จะ error
 เพราะตารางมีอยู่แล้ว ต้อง export ข้อมูลเก็บไว้ ลบตารางเดิม แล้วค่อย apply ใหม่ (ทำครั้งเดียว ข้อมูลเดิมหายถ้าไม่ได้ export):
@@ -103,7 +111,10 @@ Header `Authorization: Bearer <JWT>`
 `reason_code`: `RESIDENT_ACTIVE`, `RESIDENT_OVERDUE_ALLOWED`, `VISITOR_VALID`, `RESIDENT_OVERDUE`, `RESIDENT_OVERDUE_SEVERE`,
 `METHOD_NOT_ALLOWED`, `BLACKLISTED`, `UNKNOWN_PLATE`, `UNKNOWN_CREDENTIAL`, `CREDENTIAL_REVOKED`,
 `CREDENTIAL_NOT_YET_VALID`, `CREDENTIAL_EXPIRED`, `CREDENTIAL_USED_UP`, `USER_INACTIVE`, `VISITOR_NOT_VALID`,
-`INTERNAL_ERROR`, `LOG_FAILED`
+`TOO_MANY_ATTEMPTS`, `INTERNAL_ERROR`, `LOG_FAILED`
+
+`TOO_MANY_ATTEMPTS`: อุปกรณ์เดียวกันส่ง PIN / QR ที่ไม่รู้จักครบ 10 ครั้งใน 5 นาที จะปฏิเสธ PIN / QR ของอุปกรณ์นั้นจนพ้นช่วงเวลา
+(กันสุ่ม Guest Code) ANPR และ RFID ยังใช้ได้
 
 ## Admin API
 
@@ -114,8 +125,8 @@ Header `Authorization: Bearer <JWT>`
 |---|---|---|
 | `POST` | `/api/v1/admin/login` | `{ admin_name, password }` → `{ access_token, expires_in: 3600 }` |
 | `GET` | `/api/v1/admin/houses` | รายการบ้าน |
-| `POST` | `/api/v1/admin/houses` | `{ house_number, zone_or_soi? }` |
-| `PATCH` | `/api/v1/admin/houses/:id` | `{ house_number?, zone_or_soi?, payment_status?, is_active? }` |
+| `POST` | `/api/v1/admin/houses` | `{ house_number, house_code?, zone_or_soi? }` |
+| `PATCH` | `/api/v1/admin/houses/:id` | `{ house_number?, house_code?, zone_or_soi?, payment_status?, is_active? }` |
 | `GET` | `/api/v1/admin/residents` | `?house_id=` กรองตามบ้านได้ |
 | `POST` | `/api/v1/admin/residents` | `{ house_id, full_name, phone_number?, line_id? }` |
 | `GET` | `/api/v1/admin/residents/:id` | ลูกบ้าน + รถ + credential (ไม่มี hash / ค่าจริง) |
@@ -125,10 +136,53 @@ Header `Authorization: Bearer <JWT>`
 | `DELETE` | `/api/v1/admin/vehicles/:id` | ปิดใช้งานรถ |
 | `POST` | `/api/v1/admin/residents/:id/credentials` | `{ cred_type: RFID\|QRCODE\|PIN, value, valid_from?, valid_until? }` PIN = ตัวเลข 4–8 หลัก, ซ้ำ → `409` |
 | `DELETE` | `/api/v1/admin/credentials/:id` | เพิกถอน (`REVOKED`) |
+| `POST` | `/api/v1/admin/residents/:id/link-code` | ออกรหัสผูก LINE 8 ตัว ใช้ครั้งเดียว อายุ 24 ชม. → `{ link_code }` |
+| `GET` | `/api/v1/admin/visitors` | `?house_id=` / `?valid=1` (เฉพาะที่ยังไม่หมดอายุ) |
+| `POST` | `/api/v1/admin/visitors` | `{ duration, house_id?, full_name?, phone_number?, license_plate?, purpose?, issue_code? }` ไม่ส่ง `house_id` = งานส่วนกลาง |
+| `DELETE` | `/api/v1/admin/visitors/:id` | เพิกถอน visitor + Guest Code |
 
 - `payment_status`: `NORMAL` / `OVERDUE` / `OVERDUE_SEVERE`
-- Error: `{ "error": "BAD_REQUEST", "field": "<ชื่อ field>" }`, `NOT_FOUND`, `PLATE_EXISTS`, `CREDENTIAL_EXISTS`, `UNAUTHORIZED`
+- `house_code`: ตัวเลข 1–6 หลัก ไม่ขึ้นต้นด้วย 0 ไม่ซ้ำในโครงการ ต้องมีก่อนบ้านนั้นจะออก Guest Code ได้
+- Error: `{ "error": "BAD_REQUEST", "field": "<ชื่อ field>" }`, `NOT_FOUND`, `PLATE_EXISTS`, `CREDENTIAL_EXISTS`,
+  `HOUSE_CODE_MISSING`, `GUEST_CODE_UNAVAILABLE`, `CONFLICT`, `UNAUTHORIZED`
 - ค่าของ RFID / QR / PIN ถูก hash ทันที อ่านค่าจริงกลับจาก API ไม่ได้
+
+## Owner API (LINE LIFF)
+
+สำหรับลูกบ้าน / เจ้าของบ้าน เรียกจาก LIFF app ส่ง LIFF ID Token (`liff.getIDToken()`) มาแลก JWT
+
+ผูกบัญชีครั้งแรก:
+1. Admin เรียก `POST /api/v1/admin/residents/:id/link-code` แล้วส่งรหัสให้ลูกบ้าน
+2. ลูกบ้านเปิด LIFF กรอกรหัส → LIFF เรียก `POST /api/v1/owner/link`
+3. ครั้งต่อไป LIFF เรียก `POST /api/v1/owner/login` ได้เลย
+
+| Method | Endpoint | Body / หมายเหตุ |
+|---|---|---|
+| `POST` | `/api/v1/owner/link` | `{ id_token, link_code }` → JWT; รหัสผิด / หมดอายุ → `400 INVALID_LINK_CODE`, LINE ผูกกับคนอื่นแล้ว → `409` |
+| `POST` | `/api/v1/owner/login` | `{ id_token }` → JWT; ยังไม่ผูก → `403 NOT_LINKED` |
+| `GET` | `/api/v1/owner/me` | ข้อมูลลูกบ้าน + บ้าน + `house_code` |
+| `GET` | `/api/v1/owner/visitors` | visitor ของบ้านตัวเองเท่านั้น (`?valid=1`) |
+| `POST` | `/api/v1/owner/visitors` | `{ duration, full_name?, phone_number?, license_plate?, purpose? }` → `{ visitor_id, code, valid_until }` |
+| `DELETE` | `/api/v1/owner/visitors/:id` | เพิกถอน (เฉพาะ visitor ของบ้านตัวเอง) |
+
+### Guest Code
+
+- รูปแบบ `<house_code>+<สุ่ม 4 หลัก>` เช่น `9801+1234` งานส่วนกลาง (admin ออก ไม่มีบ้าน) ขึ้นต้น `0+` เช่น `0+5521`
+- เลขเดียวกันใช้ได้ 2 แบบ: ทำเป็น QR (เนื้อหา QR = `9801+1234`) หรือกดที่ Keypad (`98011234`, `9801#1234`, `9801*1234`)
+- `duration`: `1d` / `7d` / `14d` / `30d` / `1y` / `forever` (100 ปี)
+- DB เก็บแค่ hash: โค้ดจริงคืนให้ **ครั้งเดียว** ตอนสร้าง LIFF ต้องแสดง / แชร์ทันที (เช่น `liff.shareTargetPicker`)
+- เพิกถอนแล้วหรือหมดอายุแล้ว โค้ดเดิมไม่ถูกนำกลับมาใช้ซ้ำ
+
+## CORS
+
+`/api/v1/admin/*` และ `/api/v1/owner/*` ตอบ CORS เฉพาะ origin ที่อยู่ใน `ALLOWED_ORIGINS` (คั่นด้วย `,`)
+API ของอุปกรณ์ (`/auth/device/token`, `/access/authorize`) ไม่มี CORS
+
+## Audit Log
+
+ทุกการแก้ไขข้อมูลโดย admin / owner (POST / PATCH / DELETE ที่สำเร็จ), login และการผูก LINE บันทึกใน `tb_audit_log`
+(`actor_type`, `actor_id`, `action`, `target_id`, `detail`) โดยตัด `value`, `password`, `id_token`, `link_code` ออกจาก `detail`
+ส่วนการตัดสินสิทธิ์ที่ไม้กั้นทุกครั้งอยู่ใน `tb_access_log`
 
 ## กติกาข้อมูล
 
@@ -138,8 +192,10 @@ Header `Authorization: Bearer <JWT>`
   - ลูกบ้านค้างชำระ (`tb_house.payment_status = 'OVERDUE'`): RFID / PIN เท่านั้น ไม่ได้ห้ามเข้า แต่ไม่ได้ใช้ ANPR
   - ลูกบ้านค้างชำระต่อเนื่อง (`'OVERDUE_SEVERE'`): PIN เท่านั้น (ต้องกด Keypad)
   - การเลื่อนระดับ NORMAL → OVERDUE → OVERDUE_SEVERE ตอนนี้ admin / ระบบบิลเป็นคนแก้ `payment_status` เอง
-  - Visitor: QRCODE (ANPR ของ Visitor ต้องเพิ่มแถวเองรายโครงการ)
+  - Visitor: QRCODE / PIN (Guest Code ใช้ได้ทั้ง QR และ Keypad; ANPR ของ Visitor ต้องเพิ่มแถวเองรายโครงการ)
 - ทะเบียนรถใน `tb_vehicle` / `tb_visitor` / `tb_blacklist` ต้องเก็บแบบไม่มีช่องว่างและ `-` (เช่น `กก9999`)
 - `tb_device.device_secret_hash` = SHA-256 hex ของ device secret
 - `tb_credential.cred_hash` = HMAC-SHA256(`CRED_PEPPER`, `project_id:cred_type:value`) ดู `credentialHash()` ใน `src/authorize.ts`
 - เวลาใน `valid_from` / `valid_until` เป็น UTC
+- `tb_user.line_user_id` = LINE userId จาก LIFF (ไม่ใช่ `line_id`) 1 บัญชี LINE ผูกได้กับลูกบ้าน 1 คนเท่านั้น
+- PIN ของลูกบ้านห้ามซ้ำกับ Guest Code ที่ยังมีอยู่ (และกลับกัน) เพราะ Keypad ส่งมาเป็น method `PIN` เหมือนกัน
