@@ -17,6 +17,7 @@ SEMA (Docker, Microcontroller, ไม้กั้น, Offline Mode) เป็น
 | Runtime | Cloudflare Workers, TypeScript (strict) |
 | Database | Cloudflare D1 (`db1-aaa`) |
 | Auth อุปกรณ์ | Device secret (SHA-256) → JWT HS256 อายุ 15 นาที |
+| Auth Admin | รหัสผ่าน PBKDF2-SHA256 (100,000 รอบ) → JWT HS256 อายุ 1 ชั่วโมง |
 | Credential | RFID / QR / PIN เก็บเป็น HMAC-SHA256 เท่านั้น |
 | Test | Vitest + `@cloudflare/vitest-plugin` (รันใน workerd + D1 local) |
 
@@ -27,7 +28,10 @@ SEMA (Docker, Microcontroller, ไม้กั้น, Offline Mode) เป็น
 ```
 src/index.ts                 routing, device token, authorize endpoint, audit log
 src/authorize.ts             ตัดสินสิทธิ์ (ANPR / credential / policy)
-src/crypto.ts                SHA-256, HMAC, JWT (WebCrypto)
+src/admin.ts                 Admin API: login, บ้าน, ลูกบ้าน, รถ, บัตร/PIN
+src/crypto.ts                SHA-256, HMAC, JWT, PBKDF2 (WebCrypto)
+src/http.ts                  helper ของ request / response
+scripts/hash-password.mjs    สร้าง hash รหัสผ่าน admin
 migrations/0001_init.sql     D1 schema ทั้งหมด (v1.1.0)
 seeds/default_policy.sql     policy ตั้งต้นของทุกโครงการ
 test/                        integration tests
@@ -55,6 +59,16 @@ migration ใหม่ (`npx wrangler d1 migrations create db1-aaa <name>`) ห�
 ```sh
 npx wrangler d1 export db1-aaa --remote --output backup-v1.0.sql
 npx wrangler d1 execute db1-aaa --remote --command "SELECT name FROM sqlite_master WHERE type='table'"
+```
+
+### สร้าง Admin คนแรก
+
+Admin แต่ละคนผูกกับ 1 โครงการ (`tb_admin.project_id`) และเห็นเฉพาะข้อมูลของโครงการนั้น
+
+```sh
+node scripts/hash-password.mjs        # พิมพ์รหัสผ่าน (อย่างน้อย 12 ตัวอักษร) ได้ hash pbkdf2_sha256$...
+npx wrangler d1 execute db1-aaa --remote --command \
+  "INSERT INTO tb_admin (admin_id, project_id, admin_name, admin_password) VALUES ('ADM-001', '<project_id>', '<admin_name>', '<hash>')"
 ```
 
 ## Dev / Test
@@ -90,6 +104,31 @@ Header `Authorization: Bearer <JWT>`
 `METHOD_NOT_ALLOWED`, `BLACKLISTED`, `UNKNOWN_PLATE`, `UNKNOWN_CREDENTIAL`, `CREDENTIAL_REVOKED`,
 `CREDENTIAL_NOT_YET_VALID`, `CREDENTIAL_EXPIRED`, `CREDENTIAL_USED_UP`, `USER_INACTIVE`, `VISITOR_NOT_VALID`,
 `INTERNAL_ERROR`, `LOG_FAILED`
+
+## Admin API
+
+ทุก endpoint (ยกเว้น login) ต้องส่ง Header `Authorization: Bearer <admin JWT>`
+`project_id` มาจาก token เสมอ admin โครงการอื่นจะได้ `404` เหมือนไม่มีข้อมูล
+
+| Method | Endpoint | Body / หมายเหตุ |
+|---|---|---|
+| `POST` | `/api/v1/admin/login` | `{ admin_name, password }` → `{ access_token, expires_in: 3600 }` |
+| `GET` | `/api/v1/admin/houses` | รายการบ้าน |
+| `POST` | `/api/v1/admin/houses` | `{ house_number, zone_or_soi? }` |
+| `PATCH` | `/api/v1/admin/houses/:id` | `{ house_number?, zone_or_soi?, payment_status?, is_active? }` |
+| `GET` | `/api/v1/admin/residents` | `?house_id=` กรองตามบ้านได้ |
+| `POST` | `/api/v1/admin/residents` | `{ house_id, full_name, phone_number?, line_id? }` |
+| `GET` | `/api/v1/admin/residents/:id` | ลูกบ้าน + รถ + credential (ไม่มี hash / ค่าจริง) |
+| `PATCH` | `/api/v1/admin/residents/:id` | `{ house_id?, full_name?, phone_number?, line_id?, is_active? }` |
+| `DELETE` | `/api/v1/admin/residents/:id` | ปิดใช้งาน (soft delete) เข้าไม่ได้ทุกวิธี |
+| `POST` | `/api/v1/admin/residents/:id/vehicles` | `{ license_plate, province?, brand?, color? }` ทะเบียนซ้ำในโครงการ → `409` |
+| `DELETE` | `/api/v1/admin/vehicles/:id` | ปิดใช้งานรถ |
+| `POST` | `/api/v1/admin/residents/:id/credentials` | `{ cred_type: RFID\|QRCODE\|PIN, value, valid_from?, valid_until? }` PIN = ตัวเลข 4–8 หลัก, ซ้ำ → `409` |
+| `DELETE` | `/api/v1/admin/credentials/:id` | เพิกถอน (`REVOKED`) |
+
+- `payment_status`: `NORMAL` / `OVERDUE` / `OVERDUE_SEVERE`
+- Error: `{ "error": "BAD_REQUEST", "field": "<ชื่อ field>" }`, `NOT_FOUND`, `PLATE_EXISTS`, `CREDENTIAL_EXISTS`, `UNAUTHORIZED`
+- ค่าของ RFID / QR / PIN ถูก hash ทันที อ่านค่าจริงกลับจาก API ไม่ได้
 
 ## กติกาข้อมูล
 

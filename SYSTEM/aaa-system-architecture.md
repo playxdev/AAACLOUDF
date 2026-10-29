@@ -5,6 +5,7 @@
 -   **เอกสาร:** `aaa-system-architecture.md`
 -   **เวอร์ชัน:** 1.1 (Working Draft)
 -   **วันที่:** 2026-10-30
+-   **1.1 (เพิ่มเติม):** Admin API จัดการบ้าน/ลูกบ้าน/รถ/บัตร/PIN (§8.1)
 -   **1.1:** Backend เปลี่ยนจาก Golang เป็น TypeScript บน Cloudflare Workers +
     D1; API ตรวจสิทธิ์รวมเป็น endpoint เดียว (§8); เพิ่ม Data Model (§8.5);
     SEMA (Java Docker + Microcontroller ผ่าน SIM 4G/5G) ถือเป็น Blackbox
@@ -230,6 +231,14 @@ Endpoint ที่ระบุ "พัฒนาแล้ว" มีอยู่�
                                                                   ANPR / RFID / QRCODE /
                                                                   PIN ใน endpoint เดียว
 
+  `POST`                  `/api/v1/admin/login`                   **พัฒนาแล้ว** Admin login
+                                                                  (PBKDF2) → JWT 1 ชั่วโมง
+
+  `*`                     `/api/v1/admin/houses`,                 **พัฒนาแล้ว** จัดการบ้าน
+                          `/residents`, `/vehicles`,              (ค้างชำระ), ลูกบ้าน, รถ
+                          `/credentials`                          และบัตร/PIN แยกตามโครงการ
+                                                                  (ดู `README.md`)
+
   `POST`                  `/api/v1/access/events`                 ข้อเสนอ: รับ Command
                                                                   Result / Gate Status
 
@@ -291,7 +300,7 @@ Schema ทั้งหมดอยู่ไฟล์เดียว: `migrations
   `tb_house`        บ้านเลขที่ + `payment_status` (NORMAL / OVERDUE /
                     OVERDUE_SEVERE)
   `tb_user`         ลูกบ้าน
-  `tb_admin`        ผู้ดูแลระบบ
+  `tb_admin`        ผู้ดูแลระบบ (1 คน = 1 โครงการ) รหัสผ่านเก็บเป็น PBKDF2-SHA256
   `tb_vehicle`      รถของลูกบ้าน (ทะเบียนเก็บแบบไม่มีช่องว่างและ `-`)
   `tb_device`       อุปกรณ์ SEMA + `device_secret_hash`, `direction`, `last_seen`
   `tb_access_log`   ทุกการตัดสินสิทธิ์: `method`, `decision`, `reason_code`,
@@ -382,6 +391,9 @@ Schema ทั้งหมดอยู่ไฟล์เดียว: `migrations
 -   [ ] ทดสอบ JWT หมดอายุ, Token ถูกเพิกถอน และ Device ที่ไม่รู้จัก
 -   [ ] ทดสอบ Event ซ้ำ, Request ซ้ำ และการ Sync หลัง Offline
 -   [ ] ตรวจสอบว่า Log ไม่มี PIN/Secret
+-   [ ] Admin โครงการหนึ่งอ่าน/แก้ข้อมูลของอีกโครงการไม่ได้ และ Device Token
+    ใช้เรียก Admin API ไม่ได้
+-   [ ] Admin API ไม่คืนค่าจริงหรือ hash ของ RFID / QR / PIN
 
 ### Hardware / Site
 
@@ -416,6 +428,9 @@ Schema ทั้งหมดอยู่ไฟล์เดียว: `migrations
     ต้องเก็บ LINE `userId` จากการผูกบัญชีกับ LINE OA (ใช้ `line_id` ไม่ได้),
     ระบุเจ้าของบ้านใน `tb_user`, จำกัดไม่เกิน 1 ครั้ง/บ้าน/วัน และส่งแบบ
     async ไม่ให้หน่วงการตอบ SEMA
+14. Admin API: ต้องมี Audit Log ของการแก้ไขโดย Admin, Rate Limit ที่
+    `/api/v1/admin/login` (WAF) และ API สำหรับ Visitor / Policy / Blacklist /
+    Device ที่ยังไม่ได้ทำ
 
 ## 15. เอกสารส่งมอบที่ควรแยกกัน
 

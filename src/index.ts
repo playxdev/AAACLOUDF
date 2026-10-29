@@ -1,22 +1,10 @@
 import { decide, METHODS, normalizePlate, type Decision, type Method } from "./authorize";
-import { safeEqual, sha256Hex, signJwt, verifyJwt } from "./crypto";
+import { handleAdmin } from "./admin";
+import { JWT_ISS, safeEqual, sha256Hex, signJwt, verifyJwt } from "./crypto";
+import { isStr, json, readJson } from "./http";
 
-const JWT_ISS = "aaa";
 const JWT_AUD = "aaa-device";
 const TOKEN_TTL_SEC = 15 * 60;
-
-const json = (body: unknown, status = 200) => Response.json(body, { status });
-
-const isStr = (v: unknown, max: number): v is string => typeof v === "string" && v.length > 0 && v.length <= max;
-
-async function readJson(req: Request): Promise<Record<string, unknown> | null> {
-	try {
-		const body = await req.json();
-		return body && typeof body === "object" ? (body as Record<string, unknown>) : null;
-	} catch {
-		return null;
-	}
-}
 
 interface DeviceRow {
 	project_id: string;
@@ -150,6 +138,7 @@ export default {
 		const { pathname } = new URL(req.url);
 		if (req.method === "POST" && pathname === "/api/v1/auth/device/token") return issueDeviceToken(req, env);
 		if (req.method === "POST" && pathname === "/api/v1/access/authorize") return authorize(req, env);
+		if (pathname.startsWith("/api/v1/admin/")) return handleAdmin(req, env);
 		return json({ error: "NOT_FOUND" }, 404);
 	},
 } satisfies ExportedHandler<Env>;

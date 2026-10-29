@@ -62,6 +62,7 @@ CREATE TABLE tb_admin (
     admin_id TEXT UNIQUE NOT NULL,
     project_id TEXT NOT NULL,
     admin_name TEXT NOT NULL UNIQUE,
+    -- PBKDF2-SHA256: pbkdf2_sha256$<iterations>$<salt hex>$<hash hex> (สร้างด้วย scripts/hash-password.mjs)
     admin_password TEXT NOT NULL,
     admin_level TEXT DEFAULT 'ADMIN',
     is_active INTEGER DEFAULT 1,
