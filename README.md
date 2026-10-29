@@ -1,6 +1,38 @@
-# AAA API (Cloudflare Workers + D1)
+# AAA — Axis Auto Access (Cloud API)
 
-API ตรวจสิทธิ์เข้า-ออกสำหรับ SEMA
+Backend ตรวจสิทธิ์เข้า-ออกหมู่บ้าน/โครงการ รันบน Cloudflare Workers + D1
+อุปกรณ์หน้างานของ SEMA (ANPR / RFID / QR / Keypad) เรียก API นี้เพื่อถามว่า "เข้าได้ไหม และเข้าด้วยวิธีไหนได้บ้าง"
+
+```
+SEMA Microcontroller --(4G/5G)--> SEMA Docker (Java) --HTTPS--> AAA API (Workers) --> D1
+```
+
+SEMA (Docker, Microcontroller, ไม้กั้น, Offline Mode) เป็น Blackbox สำหรับ repo นี้
+ภาพรวมทั้งระบบดู [`SYSTEM/aaa-system-architecture.md`](SYSTEM/aaa-system-architecture.md)
+
+## Tech Stack
+
+| ส่วน | ใช้อะไร |
+|---|---|
+| Runtime | Cloudflare Workers, TypeScript (strict) |
+| Database | Cloudflare D1 (`db1-aaa`) |
+| Auth อุปกรณ์ | Device secret (SHA-256) → JWT HS256 อายุ 15 นาที |
+| Credential | RFID / QR / PIN เก็บเป็น HMAC-SHA256 เท่านั้น |
+| Test | Vitest + `@cloudflare/vitest-plugin` (รันใน workerd + D1 local) |
+
+ไม่มี runtime dependency ภายนอก
+
+## โครงสร้าง
+
+```
+src/index.ts                 routing, device token, authorize endpoint, audit log
+src/authorize.ts             ตัดสินสิทธิ์ (ANPR / credential / policy)
+src/crypto.ts                SHA-256, HMAC, JWT (WebCrypto)
+migrations/0001_init.sql     D1 schema ทั้งหมด (v1.1.0)
+seeds/default_policy.sql     policy ตั้งต้นของทุกโครงการ
+test/                        integration tests
+SYSTEM/                      เอกสาร architecture + ภาพ flow
+```
 
 ## Setup
 
