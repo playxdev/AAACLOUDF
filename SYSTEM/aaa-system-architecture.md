@@ -472,13 +472,20 @@ Schema = `migrations/0001_init.sql` (v1.1.0) + `migrations/0002_visitor_owner.sq
     LINE `userId` เก็บแล้วใน `tb_user.line_user_id` (จากการผูกบัญชีผ่าน LIFF)
     เหลือ: ใช้ Messaging API ของ LINE OA ที่ LIFF อยู่, จำกัดไม่เกิน
     1 ครั้ง/บ้าน/วัน และส่งแบบ async ไม่ให้หน่วงการตอบ SEMA
-14. Admin API: Rate Limit ที่ `/api/v1/admin/login` (WAF) และ API สำหรับ
-    Policy / Blacklist / Device ที่ยังไม่ได้ทำ
+14. Rate Limit ที่ `/api/v1/admin/login`, `/api/v1/owner/*` และ
+    `/api/v1/auth/device/token`: ตอนนี้ deploy บน `workers.dev` ซึ่งตั้ง WAF ไม่ได้
+    ต้องใช้ Workers Rate Limiting binding (นับต่อ location, ประมาณการ) หรือย้ายไป
+    โดเมนของตัวเองแล้วใช้ WAF; และ API สำหรับ Policy / Blacklist / Device /
+    เปลี่ยนรหัสผ่าน Admin ที่ยังไม่ได้ทำ
 15. Guest Code: ส่วนสุ่ม 4 หลักตามที่กำหนด คาดเดาได้ง่ายกว่า QR แบบสุ่มยาว
     ยืนยันว่ายอมรับความเสี่ยงนี้ และเกณฑ์ล็อก (10 ครั้ง / 5 นาที / อุปกรณ์)
     ลูกบ้านค้างชำระยังออก Guest Code ได้หรือไม่ (ตอนนี้ได้)
 16. Admin WebApp (Pages) และ LIFF app ยังไม่ได้พัฒนา ต้องกำหนด origin จริงใน
-    `ALLOWED_ORIGINS`
+    `ALLOWED_ORIGINS` และสร้าง LINE Login channel + LIFF เพื่อได้ `LINE_CHANNEL_ID`
+
+**สถานะ Deploy (2026-10-30):** AAA Backend ขึ้น production แล้วที่
+`https://aaa-api.cookievirus.workers.dev` ใช้ D1 `db1-aaa` (APAC) มีโครงการทดสอบ
+`PRJ-001` และ Admin คนแรก; ฐานข้อมูลเก่า `d1-db-aaa` (schema v1.0 ว่าง) ลบแล้ว
 
 ## 15. เอกสารส่งมอบที่ควรแยกกัน
 

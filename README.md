@@ -63,6 +63,13 @@ migration ใหม่ (`npx wrangler d1 migrations create db1-aaa <name>`) ห�
 Production: `https://aaa-api.cookievirus.workers.dev` (บัญชี Cookievirus, D1 `db1-aaa` region APAC)
 Secrets `JWT_SECRET` / `CRED_PEPPER` ตั้งแล้วด้วยค่าสุ่ม ไม่มีสำเนาที่อื่น ห้ามเปลี่ยน `CRED_PEPPER` (credential ทั้งหมดจะใช้ไม่ได้)
 
+สถานะ production (2026-10-30):
+- Migration `0001` + `0002` apply แล้ว, policy seed แล้ว
+- โครงการ `PRJ-001` (หมู่บ้านทดสอบ) + admin `admin` (`ADM-001`)
+- ยังว่าง: `ALLOWED_ORIGINS`, `LINE_CHANNEL_ID` (Admin WebApp / LIFF ยังเรียก API จาก browser ไม่ได้)
+- ยังไม่มี rate limit ที่ `/admin/login`, `/owner/*`, `/auth/device/token` (`workers.dev` ตั้ง WAF ไม่ได้
+  ต้องใช้ Workers Rate Limiting binding หรือย้ายไปโดเมนของตัวเอง)
+
 ### สร้าง Admin คนแรก
 
 Admin แต่ละคนผูกกับ 1 โครงการ (`tb_admin.project_id`) และเห็นเฉพาะข้อมูลของโครงการนั้น
