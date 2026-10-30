@@ -50,7 +50,6 @@ SYSTEM/                      เอกสาร architecture + ภาพ flow
 ```sh
 npm install
 npx wrangler login
-npx wrangler d1 info db1-aaa          # copy database_id ไปใส่ wrangler.jsonc
 npx wrangler secret put JWT_SECRET    # key เซ็น device JWT
 npx wrangler secret put CRED_PEPPER   # key HMAC ของ RFID / QR / PIN (ห้ามเปลี่ยนหลังลงทะเบียน credential แล้ว)
 # แก้ vars ใน wrangler.jsonc: ALLOWED_ORIGINS (origin ของ Pages + LIFF), LINE_CHANNEL_ID (LINE Login channel ของ LIFF)
@@ -61,13 +60,8 @@ npm run deploy
 Schema = `migrations/0001_init.sql` (v1.1.0) + `0002_visitor_owner.sql` ตามลำดับ แก้ schema ครั้งต่อไปให้สร้างไฟล์
 migration ใหม่ (`npx wrangler d1 migrations create db1-aaa <name>`) ห้ามแก้ไฟล์ที่ apply ขึ้น remote แล้ว
 
-ถ้า `db1-aaa` เคยรัน `schema.sql` v1.0.0 เดิมด้วย `d1 execute` ไปแล้ว `migrations apply` จะ error
-เพราะตารางมีอยู่แล้ว ต้อง export ข้อมูลเก็บไว้ ลบตารางเดิม แล้วค่อย apply ใหม่ (ทำครั้งเดียว ข้อมูลเดิมหายถ้าไม่ได้ export):
-
-```sh
-npx wrangler d1 export db1-aaa --remote --output backup-v1.0.sql
-npx wrangler d1 execute db1-aaa --remote --command "SELECT name FROM sqlite_master WHERE type='table'"
-```
+Production: `https://aaa-api.cookievirus.workers.dev` (บัญชี Cookievirus, D1 `db1-aaa` region APAC)
+Secrets `JWT_SECRET` / `CRED_PEPPER` ตั้งแล้วด้วยค่าสุ่ม ไม่มีสำเนาที่อื่น ห้ามเปลี่ยน `CRED_PEPPER` (credential ทั้งหมดจะใช้ไม่ได้)
 
 ### สร้าง Admin คนแรก
 

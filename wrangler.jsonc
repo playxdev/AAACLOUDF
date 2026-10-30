@@ -1,6 +1,8 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "aaa-api",
+  // บัญชี Cookievirus@gmail.com (login นี้เห็น 2 บัญชี ต้องระบุ)
+  "account_id": "30ec5dca725dd7acef6a6ef89342e403",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
@@ -14,8 +16,7 @@
     {
       "binding": "DB",
       "database_name": "db1-aaa",
-      // ดูค่าได้จาก: npx wrangler d1 info db1-aaa
-      "database_id": "REPLACE_WITH_DB1_AAA_ID",
+      "database_id": "e69cbde0-e4b3-4986-804c-ffab15a153a7",
       "migrations_dir": "./migrations"
     }
   ]
