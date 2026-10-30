@@ -3,8 +3,10 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.2 (Working Draft)
+-   **เวอร์ชัน:** 1.3 (Working Draft)
 -   **วันที่:** 2026-10-30
+-   **1.3:** แยก repo: AAACLOUDF (เอกสาร), AAAAPI (Workers API แทน Go),
+    AAASQL (D1 migrations แทน MS SQL), AAAADMIN (Admin WebApp), AAAAPP (LIFF)
 -   **1.2:** Visitor / Guest Code (`<house_code>+xxxx` ใช้ได้ทั้ง QR และ Keypad),
     Owner API ผ่าน LINE LIFF, Admin WebApp บน Cloudflare Pages (CORS),
     Visitor งานส่วนกลาง, Audit Log และกันสุ่มรหัสที่ Keypad (§6, §7, §8, §12)
@@ -240,7 +242,7 @@ Visitor ต้องมี Token ที่คาดเดาไม่ได้, 
 
 ## 8. API Contract ระหว่างทีม
 
-Endpoint ที่ระบุ "พัฒนาแล้ว" มีอยู่ใน AAA Backend แล้ว (รายละเอียดใน `README.md`)
+Endpoint ที่ระบุ "พัฒนาแล้ว" มีอยู่ใน AAA Backend แล้ว (รายละเอียดใน `AAAAPI/README.md`)
 ส่วนที่เหลือเป็น **ข้อเสนอสำหรับตกลงร่วมกัน**
 
 ### 8.1 AAA Backend --- Cloudflare Workers (TypeScript)
@@ -264,7 +266,7 @@ Endpoint ที่ระบุ "พัฒนาแล้ว" มีอยู่�
                           `/credentials`, `/visitors`,            และบัตร/PIN, Visitor
                           `/residents/:id/link-code`              (รวมงานส่วนกลาง), รหัสผูก
                                                                   LINE แยกตามโครงการ
-                                                                  (ดู `README.md`)
+                                                                  (ดู AAAAPI README)
 
   `POST`                  `/api/v1/owner/link`,                   **พัฒนาแล้ว** ลูกบ้าน login
                           `/api/v1/owner/login`                   ด้วย LIFF ID Token
@@ -327,7 +329,7 @@ Header `Authorization: Bearer <JWT>` --- `device_id` และ `project_id`
 
 ### 8.5 Data Model (Cloudflare D1)
 
-Schema = `migrations/0001_init.sql` (v1.1.0) + `migrations/0002_visitor_owner.sql`
+Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `migrations/0002_visitor_owner.sql`
 
   Table             เก็บอะไร
   ----------------- ------------------------------------------------------------
