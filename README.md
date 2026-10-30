@@ -44,6 +44,7 @@ SEMA (Docker, Microcontroller, ไม้กั้น, Offline Mode) เป็น
 | Auth Admin | รหัสผ่าน PBKDF2-SHA256 (100,000 รอบ) → JWT HS256 อายุ 1 ชั่วโมง |
 | Auth Owner | LINE LIFF ID Token (ตรวจกับ LINE) → JWT HS256 อายุ 1 ชั่วโมง |
 | Credential | RFID / QR / PIN / Guest Code เก็บเป็น HMAC-SHA256 เท่านั้น |
+| CLI | wrangler 4.156.0 (`d1 migrations ...` ต้องตั้ง `CLOUDFLARE_ACCOUNT_ID` ดู AAAAPI README) |
 | Test | Vitest + `@cloudflare/vitest-plugin` (รันใน workerd + D1 local) |
 | Admin WebApp / LIFF | Cloudflare Pages |
 | ภาพ ANPR / ไม้กั้น | Cloudflare R2 (ยังไม่ได้ทำ) |
