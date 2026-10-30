@@ -47,6 +47,6 @@ SEMA (Docker, Microcontroller, ไม้กั้น, Offline Mode) เป็น
 | CLI | wrangler 4.156.0 (`d1 migrations ...` ต้องตั้ง `CLOUDFLARE_ACCOUNT_ID` ดู AAAAPI README) |
 | Test | Vitest + `@cloudflare/vitest-plugin` (รันใน workerd + D1 local) |
 | Admin WebApp / LIFF | Cloudflare Pages |
-| ภาพ ANPR / ไม้กั้น | Cloudflare R2 (ยังไม่ได้ทำ) |
+| ภาพ ANPR / ไม้กั้น | Cloudflare R2 bucket `aaa-images`, เก็บ 90 วัน (ออกแบบแล้ว ยังไม่ได้ทำ ดู architecture §8.6) |
 
 API ไม่มี runtime dependency ภายนอก (เรียก LINE แค่ตอนตรวจ ID Token ที่ `/owner/login` และ `/owner/link`)

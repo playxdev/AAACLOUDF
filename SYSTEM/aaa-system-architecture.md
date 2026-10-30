@@ -3,8 +3,9 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.3 (Working Draft)
+-   **เวอร์ชัน:** 1.4 (Working Draft)
 -   **วันที่:** 2026-10-30
+-   **1.4:** ออกแบบการเก็บภาพที่ไม้กั้นใน R2 (§8.6) ยังไม่ได้พัฒนา
 -   **1.3:** แยก repo: AAACLOUDF (เอกสาร), AAAAPI (Workers API แทน Go),
     AAASQL (D1 migrations แทน MS SQL), AAAADMIN (Admin WebApp), AAAAPP (LIFF)
 -   **1.2:** Visitor / Guest Code (`<house_code>+xxxx` ใช้ได้ทั้ง QR และ Keypad),
@@ -341,7 +342,8 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
   `tb_vehicle`      รถของลูกบ้าน (ทะเบียนเก็บแบบไม่มีช่องว่างและ `-`)
   `tb_device`       อุปกรณ์ SEMA + `device_secret_hash`, `direction`, `last_seen`
   `tb_access_log`   ทุกการตัดสินสิทธิ์: `method`, `decision`, `reason_code`,
-                    `policy_version`, `credential_ref` (`log_id` = `event_id`)
+                    `policy_version`, `credential_ref` (`log_id` = `event_id`),
+                    `image_url` = key ภาพใน R2 (§8.6)
   `tb_blacklist`    ทะเบียนต้องห้าม
   `tb_visitor`      ผู้เยี่ยมชม + ช่วงเวลาที่อนุญาต, `purpose`, ผู้ออก (ADMIN/OWNER);
                     `house_id` NULL = งานส่วนกลาง
@@ -353,6 +355,46 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
                     ไม่มีแถว = ไม่อนุญาต
 
 ยังต้องตกลงกับทีม SEMA: Timeout, Retry และ Versioning ของ API
+
+### 8.6 ภาพที่ไม้กั้น (Cloudflare R2) --- ออกแบบแล้ว ยังไม่ได้พัฒนา
+
+เก็บภาพรถจาก ANPR และภาพคนที่ใช้ QR / RFID / Keypad ทุก Event (ทั้ง `YES` และ `NO`)
+ภาพเป็นข้อมูลส่วนบุคคลตาม PDPA (ทะเบียนรถ / ใบหน้า)
+
+| หัวข้อ | ข้อกำหนด |
+|---|---|
+| Bucket | `aaa-images` (private, location hint APAC), binding `IMAGES` ใน Worker `aaa-api` ห้ามเปิด public / r2.dev |
+| Key | `<project_id>/<YYYY-MM-DD>/<event_id>.jpg` (วันที่ UTC) เก็บใน `tb_access_log.image_url` ห้ามเก็บภาพใน D1 |
+| ผู้อัปโหลด | SEMA ส่งภาพมาที่ AAAAPI (ไม่ใช้ presigned URL, ไม่มี R2 key ที่ไซต์) |
+| Retention | 90 วัน ลบอัตโนมัติด้วย R2 Lifecycle Rule ทั้ง bucket |
+| ผู้ดูภาพ | Admin ของโครงการนั้น และลูกบ้านเฉพาะ Event ที่ผูกกับบ้านตัวเอง |
+
+**อัปโหลด:** `PUT /api/v1/access/events/:event_id/image` (Device JWT)
+
+-   Body = ไฟล์ภาพดิบ `Content-Type: image/jpeg` ไม่เกิน 2 MB (เกิน → `413`, type อื่น → `415`)
+-   ส่ง **หลัง** ได้คำตอบ `/access/authorize` แล้ว ไม่หน่วงการเปิดไม้กั้น
+-   ต้องมี `tb_access_log` ที่ `log_id = event_id`, `project_id` และ `device_id` ตรงกับ Token ไม่งั้น `404`
+    (SEMA retry ได้ เช่นกรณีภาพมาถึงก่อน log)
+-   Worker เขียน R2 แล้ว `UPDATE tb_access_log SET image_url = <key>`; ส่งซ้ำ = เขียนทับ key เดิม (Idempotent)
+-   Offline: SEMA เก็บภาพไว้ใน Local Queue คู่กับ Event แล้วส่งตามเมื่อกลับมา Online
+
+**ดูภาพ:** Worker อ่านจาก R2 แล้วส่งต่อ (`Cache-Control: private, no-store`) ไม่คืน URL ของ R2
+
+| Method | Endpoint | สิทธิ์ |
+|---|---|---|
+| `GET` | `/api/v1/admin/access-logs` | Admin: รายการ log ของโครงการ (`?from=&to=&license_plate=`) |
+| `GET` | `/api/v1/admin/access-logs/:log_id/image` | Admin: ภาพของ log ในโครงการตัวเอง |
+| `GET` | `/api/v1/owner/access-logs` | ลูกบ้าน: log ที่ `house_id` = บ้านตัวเอง |
+| `GET` | `/api/v1/owner/access-logs/:log_id/image` | ลูกบ้าน: ภาพของ log บ้านตัวเองเท่านั้น |
+
+-   ภาพหมดอายุแล้ว (R2 ลบแล้ว แต่ `image_url` ยังอยู่) → `404 IMAGE_EXPIRED`
+-   ทุกการดูภาพบันทึกใน `tb_audit_log` (`action` = `GET <route>`, `target_id` = `log_id`)
+
+**Schema (AAASQL migration ใหม่):** เพิ่ม `tb_access_log.house_id` (NULL ได้) + index `(house_id, timestamp)`
+ใส่ตอนตัดสินสิทธิ์: ลูกบ้าน = บ้านของลูกบ้าน, Visitor = `tb_visitor.house_id`;
+ทะเบียนไม่รู้จัก / Visitor งานส่วนกลาง = NULL (ลูกบ้านไม่เห็น)
+
+ข้อควรระวัง: ลูกบ้านจะเห็นภาพแขก / Rider ที่เข้ามาหาบ้านตัวเอง ต้องแจ้งในประกาศความเป็นส่วนตัว (PDPA)
 
 ## 9. Authentication และ Network Security
 
@@ -460,14 +502,14 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
 3.  กล้อง ANPR ส่ง Event ผ่าน HTTP/ISAPI, SDK หรือ I/O
 4.  Reader ใช้ Wiegand, RS-485, USB, Ethernet หรือ Interface อื่น
 5.  Loop Detector/Safety Sensor ใช้ Relay Contact หรือ Digital Input แบบใด
-6.  ใครเป็นผู้เรียก Backend และใครเป็นผู้ส่ง Access Event/ภาพ
+6.  ใครเป็นผู้เรียก Backend และใครเป็นผู้ส่ง Access Event (ภาพ: SEMA ส่งมาที่ AAAAPI ตาม §8.6)
 7.  API Contract ฉบับจริง: Endpoint, JSON Schema, Auth, Error Code,
     Timeout, Retry และ Version
 8.  Offline Policy, Cache TTL และการเพิกถอนสิทธิ์
 9.  วิธีรับสถานะ Gate จริงและการจัดการเมื่อ Command สำเร็จแต่ Gate ไม่เปิด
 10. Network Topology จริง, IP Plan, VLAN, Firewall และตำแหน่ง
     Router/Switch
-11. นโยบายเก็บภาพ, ระยะเวลา Retention และสิทธิ์เข้าถึงภาพ
+11. ภาพ: ตกลงแล้ว (§8.6) เหลือยืนยันกับทีม SEMA ว่ากล้อง / Reader ส่งภาพ JPEG ได้และขนาดไม่เกิน 2 MB
 12. เกณฑ์เลื่อนระดับค้างชำระ (NORMAL → OVERDUE → OVERDUE_SEVERE): จำนวนวัน
     และใครเป็นผู้แก้ `payment_status` (ตอนนี้ Admin/ระบบบิลแก้เอง)
 13. (Idea) แจ้งเตือน LINE ถึงเจ้าของบ้านเมื่อ ANPR ถูกปฏิเสธเพราะค้างชำระ:
