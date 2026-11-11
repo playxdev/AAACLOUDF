@@ -3,10 +3,11 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.7 (Working Draft)
--   **วันที่:** 2026-11-11
+-   **เวอร์ชัน:** 1.8 (Working Draft)
+-   **วันที่:** 2026-11-12
 -   **ชื่อ (2026-11-03):** SEMA Micro Controller / SEMA Board เปลี่ยนชื่อเป็น **AAA Board**
     (SEMA ยังเป็นผู้พัฒนาบอร์ดและ SEMA Docker)
+-   **1.8:** โครงการทดสอบเปลี่ยนเป็น `PRJ-000` และล้างข้อมูลทดสอบ (beta) (§14 สถานะ Deploy)
 -   **1.7:** Admin WebApp v1.3.0 ขึ้น Cloudflare Pages (`https://aaa-admin.pages.dev`)
     และตั้ง `ALLOWED_ORIGINS` แล้ว; บ้านที่ปิดใช้งานปฏิเสธลูกบ้านและ Visitor ของบ้านนั้น (§7)
 -   **1.6:** Online-first: Whitelist ใช้เฉพาะตอน Internet ล่ม (§10); กล้อง ANPR
@@ -629,9 +630,10 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
     -   กล้องส่งผลทะเบียน + ภาพให้ SEMA Docker ผ่านช่องทางใด (ISAPI HTTP Push / SDK) (ข้อ 3)
     -   ถ้า Loop ทำงานแต่อ่านทะเบียนไม่ได้ SEMA ทำอะไร (ให้ใช้ RFID / PIN แทน)
 
-**สถานะ Deploy (2026-10-30):** AAA Backend ขึ้น production แล้วที่
-`https://aaa-api.cookievirus.workers.dev` ใช้ D1 `db1-aaa` (APAC) มีโครงการทดสอบ
-`PRJ-001` และ Admin คนแรก; ฐานข้อมูลเก่า `d1-db-aaa` (schema v1.0 ว่าง) ลบแล้ว
+**สถานะ Deploy (2026-11-12, beta):** AAA Backend ขึ้น production แล้วที่
+`https://aaa-api.cookievirus.workers.dev` ใช้ D1 `db1-aaa` (APAC), Admin WebApp ที่
+`https://aaa-admin.pages.dev`; โครงการทดสอบ `PRJ-000` (เดิม `PRJ-001`) และ Admin คนแรก
+ข้อมูลทดสอบล้างแล้ว 2026-11-12; ฐานข้อมูลเก่า `d1-db-aaa` (schema v1.0 ว่าง) ลบแล้ว
 
 ## 15. เอกสารส่งมอบที่ควรแยกกัน
 

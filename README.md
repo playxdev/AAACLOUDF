@@ -33,7 +33,7 @@ SEMA (Docker, Microcontroller, ไม้กั้น, Offline Mode) เป็น
 | Admin WebApp | `https://aaa-admin.pages.dev` (Pages project `aaa-admin`, AAAADMIN v1.3.0) |
 | D1 | `db1-aaa` region APAC |
 | บัญชี Cloudflare | Cookievirus (`30ec5dca725dd7acef6a6ef89342e403`) |
-| ข้อมูล | โครงการ `PRJ-001` หมู่บ้านทดสอบ, admin `admin` |
+| ข้อมูล | โครงการทดสอบ `PRJ-000` หมู่บ้านทดสอบ, admin `admin` (`ADM-001`) — beta: ล้างข้อมูลทดสอบแล้ว 2026-11-12 (เหลือโครงการ, admin, policy) |
 
 ## Tech Stack
 
