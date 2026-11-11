@@ -3,10 +3,12 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.8 (Working Draft)
+-   **เวอร์ชัน:** 1.9 (Working Draft)
 -   **วันที่:** 2026-11-12
 -   **ชื่อ (2026-11-03):** SEMA Micro Controller / SEMA Board เปลี่ยนชื่อเป็น **AAA Board**
     (SEMA ยังเป็นผู้พัฒนาบอร์ดและ SEMA Docker)
+-   **1.9:** คำตอบ authorize มี `house_number` (บ้านเลขที่ของเจ้าของ input เมื่อ `YES`) (§8.4),
+    migration `0003`; device ทดสอบ SEMA `SEMA-000-01`
 -   **1.8:** โครงการทดสอบเปลี่ยนเป็น `PRJ-000` และล้างข้อมูลทดสอบ (beta) (§14 สถานะ Deploy)
 -   **1.7:** Admin WebApp v1.3.0 ขึ้น Cloudflare Pages (`https://aaa-admin.pages.dev`)
     และตั้ง `ALLOWED_ORIGINS` แล้ว; บ้านที่ปิดใช้งานปฏิเสธลูกบ้านและ Visitor ของบ้านนั้น (§7)
@@ -332,11 +334,15 @@ Header `Authorization: Bearer <JWT>` --- `device_id` และ `project_id`
 {
   "event_id": "evt-unique-id",
   "decision": "NO",
+  "house_number": null,
   "reason_code": "RESIDENT_OVERDUE",
   "allowed_methods": ["RFID"],
   "policy_version": 12
 }
 ```
+
+-   `house_number`: บ้านเลขที่ของเจ้าของ input ส่งเมื่อ `YES` (`NO` / Visitor งานส่วนกลาง = `null`)
+    SEMA ใช้แค่ `decision` + `house_number` ก็พอ
 
 -   `allowed_methods` บอกวิธีที่ผู้เข้ายังใช้ได้ เช่น ลูกบ้านค้างชำระเข้าด้วย ANPR
     ไม่ได้แต่แตะบัตร RFID ได้
@@ -396,6 +402,7 @@ AAA Board                       AAA API (Workers)                D1
 ### 8.5 Data Model (Cloudflare D1)
 
 Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `migrations/0002_visitor_owner.sql`
+และ `migrations/0003_access_log_house_number.sql`
 
   Table             เก็บอะไร
   ----------------- ------------------------------------------------------------
