@@ -3,8 +3,17 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.4 (Working Draft)
--   **วันที่:** 2026-10-30
+-   **เวอร์ชัน:** 1.7 (Working Draft)
+-   **วันที่:** 2026-11-11
+-   **ชื่อ (2026-11-03):** SEMA Micro Controller / SEMA Board เปลี่ยนชื่อเป็น **AAA Board**
+    (SEMA ยังเป็นผู้พัฒนาบอร์ดและ SEMA Docker)
+-   **1.7:** Admin WebApp v1.3.0 ขึ้น Cloudflare Pages (`https://aaa-admin.pages.dev`)
+    และตั้ง `ALLOWED_ORIGINS` แล้ว; บ้านที่ปิดใช้งานปฏิเสธลูกบ้านและ Visitor ของบ้านนั้น (§7)
+-   **1.6:** Online-first: Whitelist ใช้เฉพาะตอน Internet ล่ม (§10); กล้อง ANPR
+    Hikvision DS-TMC200-E1 ทำงานเมื่อ Loop Detector ส่งสัญญาณเข้า Alarm Input ของกล้อง (§5, §14 ข้อ 21)
+-   **1.5:** สรุป concept ที่คุยกับ SEMA: AAA ตัดสินสิทธิ์ทั้งหมด, 1 บ้านมี
+    "สิ่งที่ใช้เปิดได้" N รายการ, SEMA callback ผลการเปิด gate (§8.4.1)
+    ใช้ชื่อเดิม `RFID` / `YES` (SEMA เรียก `CARD` / `PASS`)
 -   **1.4:** ออกแบบการเก็บภาพที่ไม้กั้นใน R2 (§8.6) ยังไม่ได้พัฒนา
 -   **1.3:** แยก repo: AAACLOUDF (เอกสาร), AAAAPI (Workers API แทน Go),
     AAASQL (D1 migrations แทน MS SQL), AAAADMIN (Admin WebApp), AAAAPP (LIFF)
@@ -27,7 +36,7 @@
 
 AAA (Axis Auto Access) เป็นระบบควบคุมการเข้า--ออกพื้นที่ด้วยการอ่านทะเบียนรถ
 (ANPR) และ Credential เช่น RFID, QR Code และ PIN
-โดยเชื่อมข้อมูลสิทธิ์จากระบบหลังบ้าน และควบคุมไม้กั้นผ่าน SEMA Microcontroller
+โดยเชื่อมข้อมูลสิทธิ์จากระบบหลังบ้าน และควบคุมไม้กั้นผ่าน AAA Board
 
 ระบบประกอบด้วย 2 ส่วนหลักที่พัฒนาคนละทีม:
 
@@ -35,7 +44,7 @@ AAA (Axis Auto Access) เป็นระบบควบคุมการเข
     Cloudflare Workers + D1,
     ฐานข้อมูลลูกบ้าน/รถ/ผู้เยี่ยมชม, Authorization Policy และ Access Logs
 2.  **SEMA Package --- ทีม Hardware/Embedded:** ส่งมอบ Docker/API
-    สำหรับสื่อสารกับ SEMA Microcontroller และควบคุมอุปกรณ์หน้างาน
+    สำหรับสื่อสารกับ AAA Board และควบคุมอุปกรณ์หน้างาน
 
 ผู้ใช้ฝั่ง AAA มี 2 ช่องทาง:
 
@@ -54,13 +63,13 @@ AAA (Axis Auto Access) เป็นระบบควบคุมการเข
 
 ### 2.2 ฝั่งเข้า (Entry)
 
--   ANPR Camera
+-   ANPR Camera: Hikvision DS-TMC200-E1
 -   Ethernet Switch 5 Port
 -   RFID / QR Code / Keypad Reader
 -   Loop Detector สำหรับตรวจพบรถ
 -   Barrier Gate
 -   Safety Sensor / Loop สำหรับป้องกันไม้กั้นปิดใส่รถ
--   SEMA Docker API และ Microcontroller ตามตำแหน่งติดตั้งที่ตกลงกัน
+-   SEMA Docker API และ AAA Board ตามตำแหน่งติดตั้งที่ตกลงกัน
 
 ### 2.3 ฝั่งออก (Exit)
 
@@ -104,7 +113,7 @@ flowchart TB
         end
 
         DOCKER["SEMA Docker API<br/>Local Command Interface"]
-        MCU["SEMA Microcontroller"]
+        MCU["AAA Board"]
     end
 
     ADMIN <-->|"ADMIN REQUEST / RESPONSE"| API
@@ -168,12 +177,14 @@ flowchart TB
 
 ลำดับด้านล่างเป็นลำดับเชิงตรรกะ ตัวตรวจจับรถและกล้องอาจทำงานคู่ขนานกัน
 
-1.  Loop Detector ส่ง `VEHICLE DETECTED`
-2.  ANPR Camera อ่านและส่ง `LICENSE` พร้อม `IMAGE` หรือ `IMAGE REF` หากรองรับ
+1.  Loop Detector ส่ง `VEHICLE DETECTED` เข้า Alarm Input ของกล้อง (สั่งกล้องโดยตรง ไม่ผ่าน AAA Board)
+    และต่อเข้า AAA Board คู่กันเพื่อ Safety Interlock / ยืนยันว่ามีรถ (§14 ข้อ 21)
+2.  ANPR Camera (Hikvision DS-TMC200-E1) จับภาพ อ่านทะเบียน แล้วส่ง `LICENSE` พร้อม `IMAGE`
+    หรือ `IMAGE REF` ให้ SEMA
 3.  SEMA Docker API ส่ง `AUTH REQUEST` ไป AAA Backend
 4.  Backend ตอบ `YES`, `NO` หรือ `ERROR` พร้อมเหตุผลและ Event ID
 5.  หาก `YES` และ Safety Conditions ผ่าน Docker/SEMA ส่ง `OPEN`
-6.  Microcontroller ควบคุม Relay/Output ตาม Interface ที่รองรับ
+6.  AAA Board ควบคุม Relay/Output ตาม Interface ที่รองรับ
 7.  Controller รายงาน `GATE STATUS` หากมี Feedback
 8.  SEMA ส่ง `LOG`, ผลคำสั่ง และ `IMAGE REF` กลับ Backend
 9.  Backend บันทึก Event และแสดงข้อมูลที่เกี่ยวข้องใน Admin
@@ -240,6 +251,9 @@ Visitor ต้องมี Token ที่คาดเดาไม่ได้, 
   Cloud ตรวจสอบไม่ได้ ใช้ Offline Policy            ใช้ Offline Policy        หากไม่มีสิทธิ์ที่ยืนยันได้
                                                                           ไม่ควรเปิดอัตโนมัติ
   ---------------------------------------------------------------------------------------------------
+
+บ้านที่ Admin ปิดใช้งาน (`tb_house.is_active = 0`) ปฏิเสธทุกวิธี: ลูกบ้านได้ `USER_INACTIVE`,
+Visitor / Guest Code ของบ้านนั้นได้ `VISITOR_NOT_VALID` (ทะเบียน Visitor = `UNKNOWN_PLATE`)
 
 ## 8. API Contract ระหว่างทีม
 
@@ -328,6 +342,56 @@ Header `Authorization: Bearer <JWT>` --- `device_id` และ `project_id`
 -   `event_id` ซ้ำได้คำตอบเดิม (Idempotent)
 -   `ERROR` ตอบ HTTP 500 ห้ามตีความเป็น `YES`
 
+### 8.4.1 Concept ที่ตกลงกับ SEMA (2026-11-02)
+
+**AAA ตัดสินสิทธิ์ (Online-first)** AAA Board ส่งสิ่งที่อ่านได้มาถาม
+แล้วเปิด gate เมื่อได้ `YES` AAA Board ตัดสินเองจาก Whitelist ใน Local Cache
+**เฉพาะเมื่อ Internet ล่มเท่านั้น** (ดู §10)
+
+**1 บ้าน มี "สิ่งที่ใช้เปิดได้" N รายการ** เช่น บ้าน 98/6 (`house_code` = `9806`):
+
+| ประเภท | `method` | ตัวอย่าง | เก็บที่ |
+|---|---|---|---|
+| บัตร RFID 2 ใบ | `RFID` | `X534D6` | `tb_credential` (HMAC) ของลูกบ้านในบ้าน |
+| ทะเบียนรถ 3 คัน | `ANPR` | `กก9999` | `tb_vehicle` ของลูกบ้านในบ้าน |
+| PIN 3 ชุด | `PIN` | `123456` | `tb_credential` (HMAC) |
+| QR Code 2 ชุด | `QRCODE` | — | `tb_credential` (HMAC) |
+| Guest Code | `QRCODE` / `PIN` | `9806+1234` | `tb_credential` ของ `tb_visitor` |
+
+ทุกรายการผูกกับลูกบ้าน (`tb_user.house_id`) สิทธิ์คิดตาม `tb_house.payment_status`
+ของบ้าน (§7) จึงจำกัด / ระงับทั้งบ้านได้ในที่เดียว
+
+**ชื่อที่ใช้:** ใช้ชื่อเดิมของ AAA API ที่ deploy แล้ว SEMA ต้องส่ง / อ่านตามนี้
+
+| SEMA เรียก | AAA API |
+|---|---|
+| `CARD` | `method: "RFID"` |
+| `PASS` | `decision: "YES"` |
+| user id (บ้าน) | `house_code` (`tb_user.user_id` คือลูกบ้านรายคน ไม่ใช่บ้าน) |
+
+**Flow**
+
+```
+AAA Board                       AAA API (Workers)                D1
+  | 1. อ่านบัตร / ทะเบียน / PIN / QR
+  |-- POST /api/v1/access/authorize -->|
+  |   { event_id, method: "RFID",      |-- หา credential -> ลูกบ้าน -> บ้าน
+  |     value: "X534D6" }              |   ตรวจ active / หมดอายุ / policy ->|
+  |<-- { decision: "YES", ... } -------|   บันทึก tb_access_log
+  | 2. Safety ผ่าน -> สั่ง OPEN gate / barrier
+  |-- POST /api/v1/access/events ----->|   (ข้อเสนอ ยังไม่พัฒนา)
+  |   { event_id, result: "OPENED" }   |-- อัปเดต tb_access_log ของ event_id
+```
+
+1.  พัฒนาแล้ว: ขั้นที่ 1 (`/api/v1/access/authorize`) บ้านหาได้จากตัว credential เอง
+    SEMA ไม่ต้องส่งรหัสบ้าน
+2.  ข้อเสนอ: ขั้นที่ 2 callback ผลการเปิด gate ผ่าน `/api/v1/access/events`
+    อ้าง `event_id` เดิม (Idempotent)
+3.  พัฒนาแล้ว: `house_code` (ไม่บังคับ) เช่น `{ ..., "house_code": "9806" }` ใช้ตรวจซ้ำเท่านั้น
+    ไม่ใช้ตัดสินสิทธิ์ credential ต้องเป็นของบ้านนั้น (ลูกบ้าน หรือ Visitor ของบ้าน)
+    ไม่ตรง = `NO` + `HOUSE_MISMATCH`; Visitor งานส่วนกลาง / บ้านที่ไม่มี `house_code` ไม่ตรงเสมอ;
+    รูปแบบผิด (`^[1-9]\d{0,5}$`) = 400; `HOUSE_MISMATCH` นับรวมในกันสุ่มรหัส PIN/QR (§6.1)
+
 ### 8.5 Data Model (Cloudflare D1)
 
 Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `migrations/0002_visitor_owner.sql`
@@ -410,12 +474,25 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
 -   Local Docker API ไม่ควรเปิดสู่ Public Internet โดยตรง ควรจำกัดวง LAN
     และตรวจสอบผู้เรียก
 -   ห้ามให้คำตอบจาก Backend เพียงอย่างเดียวข้าม Safety Interlock ของ
-    Microcontroller
+    AAA Board
 
 ## 10. Offline Mode
 
 ต้องกำหนดและทดสอบกรณี Router/SIM, Internet หรือ Cloud ใช้งานไม่ได้
 
+**หลัก (ตกลง 2026-11-03): Online-first, Whitelist เป็นทางสำรองเมื่อ Internet ล่มเท่านั้น**
+
+| สิ่งที่เกิดกับ `/api/v1/access/authorize` | AAA Board ทำอะไร |
+|---|---|
+| ได้ `YES` | เปิด gate |
+| ได้ `NO` | ไม่เปิด **ห้ามใช้ Whitelist ข้ามคำตอบ `NO`** (เช่น ค้างชำระ, เพิกถอน, `HOUSE_MISMATCH`) |
+| เชื่อมต่อไม่ได้ / ไม่ตอบภายใน Timeout / ขอ Device Token ใหม่ไม่ได้ | ถือว่า Internet ล่ม → ตัดสินจาก Whitelist ตาม Offline Policy |
+| ได้ `ERROR` (HTTP 5xx) | ข้อเสนอ: ถือเป็น Cloud ล่ม → ใช้ Whitelist ได้ ห้ามแปลง `ERROR` เป็น `YES` ตรง ๆ (รอยืนยัน §14 ข้อ 20) |
+
+-   ทุกการตัดสินแบบ Offline ต้องเก็บใน Local Queue พร้อม flag `offline`
+    แล้วส่งขึ้น `/api/v1/access/events` เมื่อกลับมา Online
+-   Whitelist ไม่ถูกใช้ตอน Online จึงไม่กระทบการเพิกถอน / ค้างชำระที่มีผลทันที
+    ความเสี่ยงเหลือเฉพาะช่วงที่ Internet ล่ม (สิทธิ์ที่เพิ่งเพิกถอนแต่ยังไม่ sync)
 -   SEMA/Local Service ใช้ Local Cache ได้เฉพาะข้อมูลและ Policy
     ที่ซิงก์ไว้ตามข้อกำหนด
 -   Cache ต้องมี `policy_version`, เวลา Sync ล่าสุด และวันหมดอายุของ
@@ -441,7 +518,7 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
 -   Safety Interlock ต้องไม่ให้ไม้กั้นปิดเมื่อมีรถหรือสิ่งกีดขวางตามการออกแบบของผู้ผลิต
 -   การติดตั้งต้องทำตามคู่มือผู้ผลิตและให้ช่างผู้มีคุณสมบัติตรวจสอบวงจรไฟฟ้า
 
-> ห้ามต่อแรงดันไฟฟ้าเข้าขา Microcontroller/Relay โดยอาศัยการคาดเดาจากภาพ
+> ห้ามต่อแรงดันไฟฟ้าเข้าขา AAA Board/Relay โดยอาศัยการคาดเดาจากภาพ
 > ต้องตรวจสอบ Datasheet และ Wiring Diagram ของรุ่นจริงก่อน
 
 ## 12. Logging และ Audit
@@ -498,14 +575,15 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
 
 1.  Docker รันบน Edge Computer/Linux Host หรืออุปกรณ์ประเภทใด และใครเป็นผู้ดูแล
     Deployment/Update
-2.  SEMA Docker API และ Microcontroller สื่อสารกันด้วย Protocol ใด
+2.  SEMA Docker API และ AAA Board สื่อสารกันด้วย Protocol ใด
 3.  กล้อง ANPR ส่ง Event ผ่าน HTTP/ISAPI, SDK หรือ I/O
 4.  Reader ใช้ Wiegand, RS-485, USB, Ethernet หรือ Interface อื่น
 5.  Loop Detector/Safety Sensor ใช้ Relay Contact หรือ Digital Input แบบใด
 6.  ใครเป็นผู้เรียก Backend และใครเป็นผู้ส่ง Access Event (ภาพ: SEMA ส่งมาที่ AAAAPI ตาม §8.6)
 7.  API Contract ฉบับจริง: Endpoint, JSON Schema, Auth, Error Code,
     Timeout, Retry และ Version
-8.  Offline Policy, Cache TTL และการเพิกถอนสิทธิ์
+8.  Offline Policy (ใครเข้าได้ด้วยวิธีไหนตอน Internet ล่ม), Cache TTL, รอบ Sync
+    และการเพิกถอนสิทธิ์ (หลัก Online-first ตกลงแล้ว §10)
 9.  วิธีรับสถานะ Gate จริงและการจัดการเมื่อ Command สำเร็จแต่ Gate ไม่เปิด
 10. Network Topology จริง, IP Plan, VLAN, Firewall และตำแหน่ง
     Router/Switch
@@ -524,8 +602,32 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
 15. Guest Code: ส่วนสุ่ม 4 หลักตามที่กำหนด คาดเดาได้ง่ายกว่า QR แบบสุ่มยาว
     ยืนยันว่ายอมรับความเสี่ยงนี้ และเกณฑ์ล็อก (10 ครั้ง / 5 นาที / อุปกรณ์)
     ลูกบ้านค้างชำระยังออก Guest Code ได้หรือไม่ (ตอนนี้ได้)
-16. Admin WebApp (Pages) และ LIFF app ยังไม่ได้พัฒนา ต้องกำหนด origin จริงใน
-    `ALLOWED_ORIGINS` และสร้าง LINE Login channel + LIFF เพื่อได้ `LINE_CHANNEL_ID`
+16. Admin WebApp ขึ้น Pages แล้ว (`https://aaa-admin.pages.dev` อยู่ใน `ALLOWED_ORIGINS`);
+    LIFF app ยังไม่ได้พัฒนา ต้องเพิ่ม origin ของ LIFF ใน `ALLOWED_ORIGINS`
+    และสร้าง LINE Login channel + LIFF เพื่อได้ `LINE_CHANNEL_ID`
+17. (§8.4.1) API รับ `house_code` เพื่อตรวจซ้ำแล้ว (ไม่บังคับ) เหลือยืนยันกับ SEMA ว่าจะส่ง
+    ทุกครั้งหรือเฉพาะ PIN ที่กด `#เลขที่บ้าน#` ก่อน และให้ใส่ `house_code` ในคำตอบหรือไม่
+18. (§8.4.1) ค่าตัวที่ 4 ที่ SEMA เสนอ (`"OK"` ใน `RightChecker("9806","CARD","X534D6","OK")`)
+    หมายถึงอะไร เช่น สถานะการอ่านของ Reader หรือ Loop Detector ตรวจพบรถ
+19. (§8.4.1) แยกเปิด Auto Gate (ประตูบานเลื่อน) กับ Barrier อย่างไร:
+    1 device ต่อ 1 จุด หรือส่งเป้าหมายมาใน request; และ Schema ของ callback
+    `/api/v1/access/events` (`result`, เวลา, Gate Status)
+20. (§10) ค่า Timeout ก่อนถือว่า Internet ล่ม และได้ `ERROR` (HTTP 5xx) จาก Backend
+    ให้ใช้ Whitelist ได้หรือต้องปฏิเสธ
+21. (§5) ใครสั่งกล้อง ANPR ทำงานหลังรถเหยียบ Loop: **ตกลงแล้ว** Loop Detector ต่อเข้า
+    Alarm Input ของ Hikvision DS-TMC200-E1 ให้กล้องจับภาพเอง (เป็นงานของ SEMA ไม่ใช่ AAA)
+    เหลือยืนยันกับ SEMA / ทีมติดตั้ง:
+    -   ~~DS-TMC200-E1 มี Alarm Input~~ ยืนยันแล้วจาก Datasheet
+        (`AAADATASHEET/DS-TMC200-E1_Datasheet_20251209.pdf`, ตรงกับฉบับ 20250331):
+        Alarm Input 2-ch triggered inputs, Trigger Type "Video Detection, I/O Coil, Radar Mixed Traffic",
+        Alarm Output 1-ch, Relay Output 1-ch, RS485, 1 RJ45 100M, API ISAPI / SDK / ISUP;
+        Power AC 100–240V; ความแม่นยำ (ฉบับ 20250331) LPR > 98%
+        (98.5% คือความแม่นยำทิศทางรถ ไม่ใช่การอ่านทะเบียน)
+        เหลือตรวจรุ่นที่ซื้อจริง (`/3106` ไฟขาว หรือ `(I)/3106` IR) และวิธีต่อสายจากคู่มือติดตั้ง
+    -   Output ของ Loop Detector (Relay Contact / Dry Contact) ต่อเข้า Alarm Input ได้ตรง
+        และต้องแยกสัญญาณ (Isolation / Relay ตัวที่ 2) ไปเข้า AAA Board ด้วยหรือไม่
+    -   กล้องส่งผลทะเบียน + ภาพให้ SEMA Docker ผ่านช่องทางใด (ISAPI HTTP Push / SDK) (ข้อ 3)
+    -   ถ้า Loop ทำงานแต่อ่านทะเบียนไม่ได้ SEMA ทำอะไร (ให้ใช้ RFID / PIN แทน)
 
 **สถานะ Deploy (2026-10-30):** AAA Backend ขึ้น production แล้วที่
 `https://aaa-api.cookievirus.workers.dev` ใช้ D1 `db1-aaa` (APAC) มีโครงการทดสอบ

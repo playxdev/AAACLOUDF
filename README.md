@@ -30,6 +30,7 @@ SEMA (Docker, Microcontroller, ไม้กั้น, Offline Mode) เป็น
 | ส่วน | ค่า |
 |---|---|
 | API | `https://aaa-api.cookievirus.workers.dev` (Worker `aaa-api`) |
+| Admin WebApp | `https://aaa-admin.pages.dev` (Pages project `aaa-admin`, AAAADMIN v1.3.0) |
 | D1 | `db1-aaa` region APAC |
 | บัญชี Cloudflare | Cookievirus (`30ec5dca725dd7acef6a6ef89342e403`) |
 | ข้อมูล | โครงการ `PRJ-001` หมู่บ้านทดสอบ, admin `admin` |
