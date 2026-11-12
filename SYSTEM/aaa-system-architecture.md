@@ -3,10 +3,12 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.9 (Working Draft)
+-   **เวอร์ชัน:** 1.10 (Working Draft)
 -   **วันที่:** 2026-11-12
 -   **ชื่อ (2026-11-03):** SEMA Micro Controller / SEMA Board เปลี่ยนชื่อเป็น **AAA Board**
     (SEMA ยังเป็นผู้พัฒนาบอร์ดและ SEMA Docker)
+-   **1.10:** authorize รับ `direction` (`ENTRY` / `EXIT`, ไม่บังคับ) บันทึกลง
+    `tb_access_log.access_type` เพราะ SEMA ตัวเดียวคุมทั้งฝั่งเข้าและออก (§8.3, §8.4.1)
 -   **1.9:** คำตอบ authorize มี `house_number` (บ้านเลขที่ของเจ้าของ input เมื่อ `YES`) (§8.4),
     migration `0003`; device ทดสอบ SEMA `SEMA-000-01`
 -   **1.8:** โครงการทดสอบเปลี่ยนเป็น `PRJ-000` และล้างข้อมูลทดสอบ (beta) (§14 สถานะ Deploy)
@@ -324,9 +326,13 @@ Header `Authorization: Bearer <JWT>` --- `device_id` และ `project_id`
 {
   "event_id": "evt-unique-id",
   "method": "ANPR",
-  "value": "กก9999"
+  "value": "กก9999",
+  "direction": "ENTRY"
 }
 ```
+
+-   `direction` (ไม่บังคับ): `ENTRY` / `EXIT` ทิศของ event บันทึกลง `tb_access_log.access_type`
+    ไม่ส่ง = ใช้ `tb_device.direction` ของอุปกรณ์; ค่าอื่น (รวมตัวพิมพ์เล็ก) = 400
 
 ### 8.4 ตัวอย่าง Authorization Response
 
@@ -398,6 +404,8 @@ AAA Board                       AAA API (Workers)                D1
     ไม่ใช้ตัดสินสิทธิ์ credential ต้องเป็นของบ้านนั้น (ลูกบ้าน หรือ Visitor ของบ้าน)
     ไม่ตรง = `NO` + `HOUSE_MISMATCH`; Visitor งานส่วนกลาง / บ้านที่ไม่มี `house_code` ไม่ตรงเสมอ;
     รูปแบบผิด (`^[1-9]\d{0,5}$`) = 400; `HOUSE_MISMATCH` นับรวมในกันสุ่มรหัส PIN/QR (§6.1)
+4.  พัฒนาแล้ว: `direction` (ไม่บังคับ) `ENTRY` / `EXIT` บอกว่า event มาจากฝั่งเข้าหรือออก
+    เพราะ SEMA Docker ตัวเดียวคุมทั้งสองฝั่ง (1 device) ไม่ส่ง = ใช้ `tb_device.direction`
 
 ### 8.5 Data Model (Cloudflare D1)
 
@@ -413,7 +421,7 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
   `tb_admin`        ผู้ดูแลระบบ (1 คน = 1 โครงการ) รหัสผ่านเก็บเป็น PBKDF2-SHA256
   `tb_vehicle`      รถของลูกบ้าน (ทะเบียนเก็บแบบไม่มีช่องว่างและ `-`)
   `tb_device`       อุปกรณ์ SEMA + `device_secret_hash`, `direction`, `last_seen`
-  `tb_access_log`   ทุกการตัดสินสิทธิ์: `method`, `decision`, `reason_code`,
+  `tb_access_log`   ทุกการตัดสินสิทธิ์: `method`, `decision`, `reason_code`, `access_type` (ENTRY / EXIT),
                     `policy_version`, `credential_ref` (`log_id` = `event_id`),
                     `image_url` = key ภาพใน R2 (§8.6)
   `tb_blacklist`    ทะเบียนต้องห้าม
