@@ -3,10 +3,13 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.12 (Working Draft)
+-   **เวอร์ชัน:** 1.13 (Working Draft)
 -   **วันที่:** 2026-11-25
 -   **ชื่อ (2026-11-03):** SEMA Micro Controller / SEMA Board เปลี่ยนชื่อเป็น **AAA Board**
     (SEMA ยังเป็นผู้พัฒนาบอร์ดและ SEMA Docker)
+-   **1.13:** รหัสโครงการ `AAAA-AA11` (`tb_project.project_code` เช่น `PROJ-0001`) สำหรับ Admin login
+    รองรับหลายโครงการ (หมู่บ้าน / คอนโด / อาคาร / สถานที่) ใน DB เดียว, `admin_name` ห้ามซ้ำต่อโครงการ,
+    migration `0005`; Admin WebApp v2.3.0 (§8.1, §8.5)
 -   **1.12:** สิทธิ์เข้าออกเป็นของบ้าน: รถ / บัตร / PIN / QR ผูกกับ `tb_house` โดยตรง,
     `tb_user` = ผู้ติดต่อของบ้าน (เจ้าบ้าน / ผู้อยู่อาศัย / ผู้เช่า) + บัญชี LINE,
     `occupancy_status = 'VACANT'` ปิดทุกช่องทางของบ้าน (`HOUSE_VACANT`), จังหวัดเป็นส่วนหนึ่งของรถ
@@ -423,17 +426,18 @@ AAA Board                       AAA API (Workers)                D1
 ### 8.5 Data Model (Cloudflare D1)
 
 Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `migrations/0002_visitor_owner.sql`
-, `migrations/0003_access_log_house_number.sql` และ `migrations/0004_house_owned_access.sql`
+, `migrations/0003_access_log_house_number.sql` และ `migrations/0004_house_owned_access.sql`, `migrations/0005_project_code.sql`
 
   Table             เก็บอะไร
   ----------------- ------------------------------------------------------------
-  `tb_project`      โครงการ/หมู่บ้าน + `policy_version`
+  `tb_project`      โครงการ (หมู่บ้าน / คอนโด / อาคาร / สถานที่) + `project_code`
+                    (`AAAA-AA11` ใช้ login Admin) + `policy_version`
   `tb_house`        บ้านเลขที่ + `payment_status` (NORMAL / OVERDUE /
                     OVERDUE_SEVERE) + `house_code` (ตัวเลข ใช้นำหน้า Guest Code)
                     + `occupancy_status` (OCCUPIED / VACANT)
   `tb_user`         ผู้ติดต่อของบ้าน `role` OWNER / RESIDENT / TENANT + `line_user_id`
                     (ผูก LINE LIFF), รหัสผูกบัญชี (hash) ไม่มีผลต่อสิทธิ์เข้าออก
-  `tb_admin`        ผู้ดูแลระบบ (1 คน = 1 โครงการ) รหัสผ่านเก็บเป็น PBKDF2-SHA256
+  `tb_admin`        ผู้ดูแลระบบ (1 คน = 1 โครงการ, `admin_name` ห้ามซ้ำต่อโครงการ) รหัสผ่านเก็บเป็น PBKDF2-SHA256
   `tb_vehicle`      รถของบ้าน (`house_id`) ทะเบียนเก็บแบบไม่มีช่องว่างและ `-` + จังหวัด
   `tb_device`       อุปกรณ์ SEMA + `device_secret_hash`, `direction`, `last_seen`
   `tb_access_log`   ทุกการตัดสินสิทธิ์: `method`, `decision`, `reason_code`, `access_type` (ENTRY / EXIT),
