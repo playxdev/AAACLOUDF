@@ -652,7 +652,7 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
 `https://aaa-api.cookievirus.workers.dev` ใช้ D1 `aaa-d1` (APAC), Admin WebApp ที่
 `https://aaa-admin.pages.dev`; โครงการทดสอบ `PRJ-000` (เดิม `PRJ-001`) และ Admin คนแรก
 ข้อมูลทดสอบล้างแล้ว 2026-11-12; ฐานข้อมูลเก่า `d1-db-aaa` (schema v1.0 ว่าง) ลบแล้ว
-D1 เปลี่ยนชื่อจาก `db1-aaa` เป็น `aaa-d1` วันที่ 2026-11-25; `db1-aaa` ยังเก็บไว้เป็น backup ยังไม่ลบ
+D1 เปลี่ยนชื่อจาก `db1-aaa` เป็น `aaa-d1` วันที่ 2026-11-25; `db1-aaa` ลบแล้ว
 
 ## 15. เอกสารส่งมอบที่ควรแยกกัน
 
