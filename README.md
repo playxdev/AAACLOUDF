@@ -7,7 +7,7 @@ repo นี้เก็บเฉพาะเอกสารและ tech stack 
 ```
 SEMA Microcontroller --(4G/5G)--> SEMA Docker (Java) --HTTPS--> AAA API (Workers) --> D1
 Admin WebApp (Cloudflare Pages) ----------------------HTTPS--> /api/v1/admin/*
-LINE LIFF (ลูกบ้าน / เจ้าของบ้าน) ----------------------HTTPS--> /api/v1/owner/*
+LINE LIFF (ผู้ติดต่อของบ้าน) ----------------------HTTPS--> /api/v1/owner/*
 ```
 
 SEMA (Docker, Microcontroller, ไม้กั้น, Offline Mode) เป็น Blackbox สำหรับระบบ AAA
@@ -22,15 +22,15 @@ SEMA (Docker, Microcontroller, ไม้กั้น, Offline Mode) เป็น
 | **AAACLOUDF** (repo นี้) | เอกสาร architecture, tech stack, ภาพ flow | Markdown |
 | [AAAAPI](https://github.com/playxdev/AAAAPI) | Backend API: ตรวจสิทธิ์ (SEMA), Admin API, Owner API | Cloudflare Workers + TypeScript |
 | [AAASQL](https://github.com/playxdev/AAASQL) | D1 schema / migrations / seed, R2 (ภาพ), มาตรฐาน DB | Cloudflare D1 (SQLite), R2 |
-| [AAAADMIN](https://github.com/playxdev/AAAADMIN) | Admin WebApp | Vite + TypeScript + Tailwind บน Cloudflare Pages |
-| AAAAPP | LIFF app สำหรับลูกบ้าน (ยังไม่เริ่ม) | LINE LIFF บน Cloudflare Pages |
+| [AAAADMIN](https://github.com/playxdev/AAAADMIN) | Admin WebApp | React + Vite + TypeScript + Tailwind (shadcn/ui) บน Cloudflare Pages |
+| AAAAPP | LIFF app สำหรับผู้ติดต่อของบ้าน (ยังไม่เริ่ม) | LINE LIFF บน Cloudflare Pages |
 
 ## Production
 
 | ส่วน | ค่า |
 |---|---|
 | API | `https://aaa-api.cookievirus.workers.dev` (Worker `aaa-api`) |
-| Admin WebApp | `https://aaa-admin.pages.dev` (Pages project `aaa-admin`, AAAADMIN v1.3.0) |
+| Admin WebApp | `https://aaa-admin.pages.dev` (Pages project `aaa-admin`, AAAADMIN v2.2.0) |
 | D1 | `aaa-d1` region APAC |
 | บัญชี Cloudflare | Cookievirus (`30ec5dca725dd7acef6a6ef89342e403`) |
 | ข้อมูล | โครงการทดสอบ `PRJ-000` หมู่บ้านทดสอบ, admin `admin` (`ADM-001`) — beta: ล้างข้อมูลทดสอบแล้ว 2026-11-12 (เหลือโครงการ, admin, policy) |

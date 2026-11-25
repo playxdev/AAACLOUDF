@@ -3,10 +3,14 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.11 (Working Draft)
+-   **เวอร์ชัน:** 1.12 (Working Draft)
 -   **วันที่:** 2026-11-25
 -   **ชื่อ (2026-11-03):** SEMA Micro Controller / SEMA Board เปลี่ยนชื่อเป็น **AAA Board**
     (SEMA ยังเป็นผู้พัฒนาบอร์ดและ SEMA Docker)
+-   **1.12:** สิทธิ์เข้าออกเป็นของบ้าน: รถ / บัตร / PIN / QR ผูกกับ `tb_house` โดยตรง,
+    `tb_user` = ผู้ติดต่อของบ้าน (เจ้าบ้าน / ผู้อยู่อาศัย / ผู้เช่า) + บัญชี LINE,
+    `occupancy_status = 'VACANT'` ปิดทุกช่องทางของบ้าน (`HOUSE_VACANT`), จังหวัดเป็นส่วนหนึ่งของรถ
+    (`province` ใน authorize, `PLATE_AMBIGUOUS`), migration `0004`; Admin WebApp v2.2.0 (§7, §8.1, §8.4.1, §8.5)
 -   **1.11:** D1 production เปลี่ยนชื่อจาก `db1-aaa` เป็น `aaa-d1` (ย้ายข้อมูลด้วย export / import,
     device secret และ URL ของ API เดิม); ใช้ PlayDevX Production Platform Standard v1.3.1
     และคง Backend เป็น TypeScript บน Workers (ประเมิน Go บน Cloudflare Containers แล้วไม่ใช้) (§14)
@@ -56,9 +60,9 @@ AAA (Axis Auto Access) เป็นระบบควบคุมการเข
 
 ผู้ใช้ฝั่ง AAA มี 2 ช่องทาง:
 
--   **Admin WebApp (Cloudflare Pages):** นิติบุคคล/Admin จัดการบ้าน, ลูกบ้าน, รถ,
-    บัตร/PIN, ค้างชำระ และ Visitor รวมถึงผู้เยี่ยมชมงานส่วนกลาง
--   **LINE LIFF (ลูกบ้าน/เจ้าของบ้าน):** ออก Guest Code ให้แขก / Rider / ผู้ส่งของ
+-   **Admin WebApp (Cloudflare Pages):** นิติบุคคล/Admin จัดการบ้าน, ผู้ติดต่อของบ้าน, รถ,
+    บัตร/PIN/QR ของบ้าน, ค้างชำระ, การอยู่อาศัย และ Visitor รวมถึงผู้เยี่ยมชมงานส่วนกลาง
+-   **LINE LIFF (ผู้ติดต่อของบ้าน):** ออก Guest Code ให้แขก / Rider / ผู้ส่งของ
     และเพิกถอนเองได้
 
 ## 2. ภาพรวมอุปกรณ์หน้างาน
@@ -94,7 +98,7 @@ Detector, Barrier Gate และ Safety Sensor
 
 ``` mermaid
 flowchart TB
-    ADMIN["Admin Web Application<br/>จัดการลูกบ้าน / รถ / Visitor / สิทธิ์"]
+    ADMIN["Admin Web Application<br/>จัดการบ้าน / ผู้ติดต่อ / รถ / Visitor / สิทธิ์"]
     API["AAA Backend<br/>Cloudflare Workers (TypeScript) + HTTPS"]
     AUTH{"Authorization Engine"}
     DB[("Cloudflare D1<br/>Residents / Vehicles / Credentials<br/>Visitors / Policies / Events")]
@@ -260,8 +264,11 @@ Visitor ต้องมี Token ที่คาดเดาไม่ได้, 
                                                                           ไม่ควรเปิดอัตโนมัติ
   ---------------------------------------------------------------------------------------------------
 
-บ้านที่ Admin ปิดใช้งาน (`tb_house.is_active = 0`) ปฏิเสธทุกวิธี: ลูกบ้านได้ `USER_INACTIVE`,
+บ้านที่ Admin ปิดใช้งาน (`tb_house.is_active = 0`) ปฏิเสธทุกวิธี: ช่องทางของบ้านได้ `USER_INACTIVE`,
 Visitor / Guest Code ของบ้านนั้นได้ `VISITOR_NOT_VALID` (ทะเบียน Visitor = `UNKNOWN_PLATE`)
+
+บ้านไม่มีผู้อยู่อาศัย (`tb_house.occupancy_status = 'VACANT'`) ปฏิเสธทุกวิธีของบ้านด้วย `HOUSE_VACANT`
+(รวม Guest Code ของบ้าน) และเพิ่มรถ / บัตร / ออก Guest Code ใหม่ไม่ได้ เปลี่ยนกลับเป็น `OCCUPIED` ใช้ได้ทันที
 
 ## 8. API Contract ระหว่างทีม
 
@@ -285,17 +292,18 @@ Endpoint ที่ระบุ "พัฒนาแล้ว" มีอยู่�
                                                                   (PBKDF2) → JWT 1 ชั่วโมง
 
   `*`                     `/api/v1/admin/houses`,                 **พัฒนาแล้ว** จัดการบ้าน
-                          `/residents`, `/vehicles`,              (ค้างชำระ), ลูกบ้าน, รถ
-                          `/credentials`, `/visitors`,            และบัตร/PIN, Visitor
-                          `/residents/:id/link-code`              (รวมงานส่วนกลาง), รหัสผูก
-                                                                  LINE แยกตามโครงการ
+                          `/houses/:id/contacts`, `/contacts`,    (ค้างชำระ / การอยู่อาศัย),
+                          `/houses/:id/vehicles`,                 ผู้ติดต่อ, รถ และบัตร / PIN /
+                          `/houses/:id/credentials`,              QR ของบ้าน, Visitor
+                          `/visitors`,                            (รวมงานส่วนกลาง), รหัสผูก
+                          `/contacts/:id/link-code`               LINE แยกตามโครงการ
                                                                   (ดู AAAAPI README)
 
-  `POST`                  `/api/v1/owner/link`,                   **พัฒนาแล้ว** ลูกบ้าน login
+  `POST`                  `/api/v1/owner/link`,                   **พัฒนาแล้ว** ผู้ติดต่อ login
                           `/api/v1/owner/login`                   ด้วย LIFF ID Token
                                                                   → JWT 1 ชั่วโมง
 
-  `*`                     `/api/v1/owner/me`,                     **พัฒนาแล้ว** ลูกบ้านออก /
+  `*`                     `/api/v1/owner/me`,                     **พัฒนาแล้ว** ผู้ติดต่อออก /
                           `/api/v1/owner/visitors`                ดู / เพิกถอน Guest Code
                                                                   ของบ้านตัวเอง
 
@@ -368,14 +376,14 @@ Header `Authorization: Bearer <JWT>` --- `device_id` และ `project_id`
 
 | ประเภท | `method` | ตัวอย่าง | เก็บที่ |
 |---|---|---|---|
-| บัตร RFID 2 ใบ | `RFID` | `X534D6` | `tb_credential` (HMAC) ของลูกบ้านในบ้าน |
-| ทะเบียนรถ 3 คัน | `ANPR` | `กก9999` | `tb_vehicle` ของลูกบ้านในบ้าน |
-| PIN 3 ชุด | `PIN` | `123456` | `tb_credential` (HMAC) |
-| QR Code 2 ชุด | `QRCODE` | — | `tb_credential` (HMAC) |
+| บัตร RFID 2 ใบ | `RFID` | `X534D6` | `tb_credential` (HMAC) ของบ้าน |
+| ทะเบียนรถ 3 คัน | `ANPR` | `กก9999` (+ `province`) | `tb_vehicle` ของบ้าน |
+| PIN 3 ชุด | `PIN` | `123456` | `tb_credential` (HMAC) ของบ้าน |
+| QR Code 2 ชุด | `QRCODE` | `7KQ2MXH9PZ4RT8WBN3CD` | `tb_credential` (HMAC) ของบ้าน |
 | Guest Code | `QRCODE` / `PIN` | `9806+1234` | `tb_credential` ของ `tb_visitor` |
 
-ทุกรายการผูกกับลูกบ้าน (`tb_user.house_id`) สิทธิ์คิดตาม `tb_house.payment_status`
-ของบ้าน (§7) จึงจำกัด / ระงับทั้งบ้านได้ในที่เดียว
+ทุกรายการผูกกับบ้านโดยตรง (`house_id`) ไม่ผูกกับคน คนในบ้านจัดการกันเอง สิทธิ์คิดตาม
+`tb_house.payment_status` / `occupancy_status` ของบ้าน (§7) จึงจำกัด / ระงับทั้งบ้านได้ในที่เดียว
 
 **ชื่อที่ใช้:** ใช้ชื่อเดิมของ AAA API ที่ deploy แล้ว SEMA ต้องส่ง / อ่านตามนี้
 
@@ -383,7 +391,7 @@ Header `Authorization: Bearer <JWT>` --- `device_id` และ `project_id`
 |---|---|
 | `CARD` | `method: "RFID"` |
 | `PASS` | `decision: "YES"` |
-| user id (บ้าน) | `house_code` (`tb_user.user_id` คือลูกบ้านรายคน ไม่ใช่บ้าน) |
+| user id (บ้าน) | `house_code` (`tb_user.user_id` คือผู้ติดต่อรายคน ไม่ใช่บ้าน) |
 
 **Flow**
 
@@ -391,7 +399,7 @@ Header `Authorization: Bearer <JWT>` --- `device_id` และ `project_id`
 AAA Board                       AAA API (Workers)                D1
   | 1. อ่านบัตร / ทะเบียน / PIN / QR
   |-- POST /api/v1/access/authorize -->|
-  |   { event_id, method: "RFID",      |-- หา credential -> ลูกบ้าน -> บ้าน
+  |   { event_id, method: "RFID",      |-- หา credential -> บ้าน
   |     value: "X534D6" }              |   ตรวจ active / หมดอายุ / policy ->|
   |<-- { decision: "YES", ... } -------|   บันทึก tb_access_log
   | 2. Safety ผ่าน -> สั่ง OPEN gate / barrier
@@ -404,25 +412,29 @@ AAA Board                       AAA API (Workers)                D1
 2.  ข้อเสนอ: ขั้นที่ 2 callback ผลการเปิด gate ผ่าน `/api/v1/access/events`
     อ้าง `event_id` เดิม (Idempotent)
 3.  พัฒนาแล้ว: `house_code` (ไม่บังคับ) เช่น `{ ..., "house_code": "9806" }` ใช้ตรวจซ้ำเท่านั้น
-    ไม่ใช้ตัดสินสิทธิ์ credential ต้องเป็นของบ้านนั้น (ลูกบ้าน หรือ Visitor ของบ้าน)
+    ไม่ใช้ตัดสินสิทธิ์ credential ต้องเป็นของบ้านนั้น (ของบ้านเอง หรือ Visitor ของบ้าน)
     ไม่ตรง = `NO` + `HOUSE_MISMATCH`; Visitor งานส่วนกลาง / บ้านที่ไม่มี `house_code` ไม่ตรงเสมอ;
     รูปแบบผิด (`^[1-9]\d{0,5}$`) = 400; `HOUSE_MISMATCH` นับรวมในกันสุ่มรหัส PIN/QR (§6.1)
 4.  พัฒนาแล้ว: `direction` (ไม่บังคับ) `ENTRY` / `EXIT` บอกว่า event มาจากฝั่งเข้าหรือออก
     เพราะ SEMA Docker ตัวเดียวคุมทั้งสองฝั่ง (1 device) ไม่ส่ง = ใช้ `tb_device.direction`
+5.  พัฒนาแล้ว: `province` (ไม่บังคับ, ANPR) จังหวัดที่กล้องอ่านได้ ทะเบียนเดียวกันต่างจังหวัด = คนละคัน
+    ใช้แยกเฉพาะเมื่อทะเบียนซ้ำหลายคัน (ทะเบียนที่มีคันเดียวไม่สนจังหวัด) แยกไม่ได้ = `NO` + `PLATE_AMBIGUOUS`
 
 ### 8.5 Data Model (Cloudflare D1)
 
 Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `migrations/0002_visitor_owner.sql`
-และ `migrations/0003_access_log_house_number.sql`
+, `migrations/0003_access_log_house_number.sql` และ `migrations/0004_house_owned_access.sql`
 
   Table             เก็บอะไร
   ----------------- ------------------------------------------------------------
   `tb_project`      โครงการ/หมู่บ้าน + `policy_version`
   `tb_house`        บ้านเลขที่ + `payment_status` (NORMAL / OVERDUE /
                     OVERDUE_SEVERE) + `house_code` (ตัวเลข ใช้นำหน้า Guest Code)
-  `tb_user`         ลูกบ้าน + `line_user_id` (ผูก LINE LIFF), รหัสผูกบัญชี (hash)
+                    + `occupancy_status` (OCCUPIED / VACANT)
+  `tb_user`         ผู้ติดต่อของบ้าน `role` OWNER / RESIDENT / TENANT + `line_user_id`
+                    (ผูก LINE LIFF), รหัสผูกบัญชี (hash) ไม่มีผลต่อสิทธิ์เข้าออก
   `tb_admin`        ผู้ดูแลระบบ (1 คน = 1 โครงการ) รหัสผ่านเก็บเป็น PBKDF2-SHA256
-  `tb_vehicle`      รถของลูกบ้าน (ทะเบียนเก็บแบบไม่มีช่องว่างและ `-`)
+  `tb_vehicle`      รถของบ้าน (`house_id`) ทะเบียนเก็บแบบไม่มีช่องว่างและ `-` + จังหวัด
   `tb_device`       อุปกรณ์ SEMA + `device_secret_hash`, `direction`, `last_seen`
   `tb_access_log`   ทุกการตัดสินสิทธิ์: `method`, `decision`, `reason_code`, `access_type` (ENTRY / EXIT),
                     `policy_version`, `credential_ref` (`log_id` = `event_id`),
@@ -430,7 +442,7 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
   `tb_blacklist`    ทะเบียนต้องห้าม
   `tb_visitor`      ผู้เยี่ยมชม + ช่วงเวลาที่อนุญาต, `purpose`, ผู้ออก (ADMIN/OWNER);
                     `house_id` NULL = งานส่วนกลาง
-  `tb_credential`   RFID / QRCODE / PIN / GUEST เก็บเป็น HMAC-SHA256 เท่านั้น,
+  `tb_credential`   RFID / QRCODE / PIN ของบ้าน (`house_id`) / GUEST ของ Visitor เก็บเป็น HMAC-SHA256 เท่านั้น,
                     วันหมดอายุ, `max_uses`, สถานะเพิกถอน
   `tb_audit_log`    การกระทำของ Admin / Owner (ไม่มีรหัสผ่าน / credential)
   `tb_policy`       กลุ่ม (RESIDENT / RESIDENT_OVERDUE /
