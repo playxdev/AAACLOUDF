@@ -3,10 +3,13 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.10 (Working Draft)
--   **วันที่:** 2026-11-12
+-   **เวอร์ชัน:** 1.11 (Working Draft)
+-   **วันที่:** 2026-11-25
 -   **ชื่อ (2026-11-03):** SEMA Micro Controller / SEMA Board เปลี่ยนชื่อเป็น **AAA Board**
     (SEMA ยังเป็นผู้พัฒนาบอร์ดและ SEMA Docker)
+-   **1.11:** D1 production เปลี่ยนชื่อจาก `db1-aaa` เป็น `aaa-d1` (ย้ายข้อมูลด้วย export / import,
+    device secret และ URL ของ API เดิม); ใช้ PlayDevX Production Platform Standard v1.3.1
+    และคง Backend เป็น TypeScript บน Workers (ประเมิน Go บน Cloudflare Containers แล้วไม่ใช้) (§14)
 -   **1.10:** authorize รับ `direction` (`ENTRY` / `EXIT`, ไม่บังคับ) บันทึกลง
     `tb_access_log.access_type` เพราะ SEMA ตัวเดียวคุมทั้งฝั่งเข้าและออก (§8.3, §8.4.1)
 -   **1.9:** คำตอบ authorize มี `house_number` (บ้านเลขที่ของเจ้าของ input เมื่อ `YES`) (§8.4),
@@ -646,9 +649,10 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
     -   ถ้า Loop ทำงานแต่อ่านทะเบียนไม่ได้ SEMA ทำอะไร (ให้ใช้ RFID / PIN แทน)
 
 **สถานะ Deploy (2026-11-12, beta):** AAA Backend ขึ้น production แล้วที่
-`https://aaa-api.cookievirus.workers.dev` ใช้ D1 `db1-aaa` (APAC), Admin WebApp ที่
+`https://aaa-api.cookievirus.workers.dev` ใช้ D1 `aaa-d1` (APAC), Admin WebApp ที่
 `https://aaa-admin.pages.dev`; โครงการทดสอบ `PRJ-000` (เดิม `PRJ-001`) และ Admin คนแรก
 ข้อมูลทดสอบล้างแล้ว 2026-11-12; ฐานข้อมูลเก่า `d1-db-aaa` (schema v1.0 ว่าง) ลบแล้ว
+D1 เปลี่ยนชื่อจาก `db1-aaa` เป็น `aaa-d1` วันที่ 2026-11-25; `db1-aaa` ยังเก็บไว้เป็น backup ยังไม่ลบ
 
 ## 15. เอกสารส่งมอบที่ควรแยกกัน
 
