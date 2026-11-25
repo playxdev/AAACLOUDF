@@ -3,10 +3,14 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.13 (Working Draft)
+-   **เวอร์ชัน:** 1.14 (Working Draft)
 -   **วันที่:** 2026-11-25
 -   **ชื่อ (2026-11-03):** SEMA Micro Controller / SEMA Board เปลี่ยนชื่อเป็น **AAA Board**
     (SEMA ยังเป็นผู้พัฒนาบอร์ดและ SEMA Docker)
+-   **1.14:** ผู้ใช้ 3 ระดับ `ROOT` (PlayDevX `PLAY-0013`, ทุกโครงการ) / `ADMIN` / คนในบ้าน
+    (`OWNER` 1 คนต่อบ้าน / `FAMILY` / `RESIDENT` / `TENANT` ผ่าน LINE Mini App), `ref` ไม่ซ้ำทั้งระบบ,
+    PIN = `house_code` + 4 หลัก, QR = `house_code` + 20 ตัว, จำกัด 20 + 20 ต่อบ้าน, `label`, ลบได้เฉพาะของตัวเอง,
+    RFID เฉพาะ Admin / Root; migration `0006`; Admin WebApp v2.4.0
 -   **1.13:** รหัสโครงการ `AAAA-AA11` (`tb_project.project_code` เช่น `PROJ-0001`) สำหรับ Admin login
     รองรับหลายโครงการ (หมู่บ้าน / คอนโด / อาคาร / สถานที่) ใน DB เดียว, `admin_name` ห้ามซ้ำต่อโครงการ,
     migration `0005`; Admin WebApp v2.3.0 (§8.1, §8.5)
