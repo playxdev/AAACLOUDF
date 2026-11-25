@@ -3,10 +3,13 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.15 (Working Draft)
+-   **เวอร์ชัน:** 1.16 (Working Draft)
 -   **วันที่:** 2026-11-25
 -   **ชื่อ (2026-11-03):** SEMA Micro Controller / SEMA Board เปลี่ยนชื่อเป็น **AAA Board**
     (SEMA ยังเป็นผู้พัฒนาบอร์ดและ SEMA Docker)
+-   **1.16:** รหัสพื้นที่ส่วนกลางต่อโครงการ (`tb_project.common_area_code` ค่าเริ่มต้น `0000` → Guest Code `0000+1234`),
+    แก้ไขรถ / บัตร / ผู้มาติดต่อ, ชื่อสั้นเป็นของคนในบ้าน, จังหวัดภาษาไทย, รายงานการเข้าออก (`/admin/access-logs` + filter),
+    migration `0008`; Admin WebApp v2.5.1
 -   **1.15:** ลืมรหัสผ่าน Admin: Root ตั้งรหัสชั่วคราว + บังคับเปลี่ยนตอน login (`must_change_password`,
     migration `0007`), เปลี่ยนรหัสเอง `/api/v1/admin/me/password`; Admin WebApp v2.5.0
 -   **1.14:** ผู้ใช้ 3 ระดับ `ROOT` (PlayDevX `PLAY-0013`, ทุกโครงการ) / `ADMIN` / คนในบ้าน
