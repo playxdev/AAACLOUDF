@@ -3,10 +3,13 @@
 ## System Architecture & Development / Hardware Construction Brief
 
 -   **เอกสาร:** `aaa-system-architecture.md`
--   **เวอร์ชัน:** 1.16 (Working Draft)
+-   **เวอร์ชัน:** 1.17 (Working Draft)
 -   **วันที่:** 2026-11-25
 -   **ชื่อ (2026-11-03):** SEMA Micro Controller / SEMA Board เปลี่ยนชื่อเป็น **AAA Board**
     (SEMA ยังเป็นผู้พัฒนาบอร์ดและ SEMA Docker)
+-   **1.17:** รูปจากกล้องพัฒนาแล้ว (§8.6): รูปเต็มฉาก + รูปป้ายต่อ event, ผูก event กับบ้าน (`house_id`),
+    ลิงก์ที่เซ็นแล้ว 7 วันสำหรับ CSV, migration `0009` (ยังไม่ deploy); TODO §14 ข้อ 22 (Visitor ขอรหัสผ่าน Keypad `*<house_code>#`)
+    และข้อ 23 (วิดีโอ 3–5 วินาที); Admin WebApp v2.6.0
 -   **1.16:** รหัสพื้นที่ส่วนกลางต่อโครงการ (`tb_project.common_area_code` ค่าเริ่มต้น `0000` → Guest Code `0000+1234`),
     แก้ไขรถ / บัตร / ผู้มาติดต่อ, ชื่อสั้นเป็นของคนในบ้าน, จังหวัดภาษาไทย, รายงานการเข้าออก (`/admin/access-logs` + filter),
     migration `0008`; Admin WebApp v2.5.1
@@ -464,7 +467,7 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
 
 ยังต้องตกลงกับทีม SEMA: Timeout, Retry และ Versioning ของ API
 
-### 8.6 ภาพที่ไม้กั้น (Cloudflare R2) --- ออกแบบแล้ว ยังไม่ได้พัฒนา
+### 8.6 ภาพที่ไม้กั้น (Cloudflare R2) --- พัฒนาแล้ว (รูป) / วิดีโอยังไม่ทำ (§14 ข้อ 23)
 
 เก็บภาพรถจาก ANPR และภาพคนที่ใช้ QR / RFID / Keypad ทุก Event (ทั้ง `YES` และ `NO`)
 ภาพเป็นข้อมูลส่วนบุคคลตาม PDPA (ทะเบียนรถ / ใบหน้า)
@@ -472,16 +475,16 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
 | หัวข้อ | ข้อกำหนด |
 |---|---|
 | Bucket | `aaa-images` (private, location hint APAC), binding `IMAGES` ใน Worker `aaa-api` ห้ามเปิด public / r2.dev |
-| Key | `<project_id>/<YYYY-MM-DD>/<event_id>.jpg` (วันที่ UTC) เก็บใน `tb_access_log.image_url` ห้ามเก็บภาพใน D1 |
+| Key | `<project_id>/<YYYY-MM-DD>/<event_id>-scene.jpg` (`tb_access_log.image_url`) และ `…-plate.jpg` (`plate_image_key`) วันที่ UTC ห้ามเก็บภาพใน D1 |
 | ผู้อัปโหลด | SEMA ส่งภาพมาที่ AAAAPI (ไม่ใช้ presigned URL, ไม่มี R2 key ที่ไซต์) |
 | Retention | 90 วัน ลบอัตโนมัติด้วย R2 Lifecycle Rule ทั้ง bucket |
 | ผู้ดูภาพ | Admin ของโครงการนั้น และลูกบ้านเฉพาะ Event ที่ผูกกับบ้านตัวเอง |
 
-**อัปโหลด:** `PUT /api/v1/access/events/:event_id/image` (Device JWT)
+**อัปโหลด:** `PUT /api/v1/access/events/:event_id/image?kind=scene|plate` (Device JWT)
 
 -   Body = ไฟล์ภาพดิบ `Content-Type: image/jpeg` ไม่เกิน 2 MB (เกิน → `413`, type อื่น → `415`)
 -   ส่ง **หลัง** ได้คำตอบ `/access/authorize` แล้ว ไม่หน่วงการเปิดไม้กั้น
--   ต้องมี `tb_access_log` ที่ `log_id = event_id`, `project_id` และ `device_id` ตรงกับ Token ไม่งั้น `404`
+-   ต้องมี `tb_access_log` ที่ `log_id = event_id` และ `project_id` ตรงกับ Token ไม่งั้น `404 EVENT_NOT_FOUND`
     (SEMA retry ได้ เช่นกรณีภาพมาถึงก่อน log)
 -   Worker เขียน R2 แล้ว `UPDATE tb_access_log SET image_url = <key>`; ส่งซ้ำ = เขียนทับ key เดิม (Idempotent)
 -   Offline: SEMA เก็บภาพไว้ใน Local Queue คู่กับ Event แล้วส่งตามเมื่อกลับมา Online
@@ -490,10 +493,11 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
 
 | Method | Endpoint | สิทธิ์ |
 |---|---|---|
-| `GET` | `/api/v1/admin/access-logs` | Admin: รายการ log ของโครงการ (`?from=&to=&license_plate=`) |
-| `GET` | `/api/v1/admin/access-logs/:log_id/image` | Admin: ภาพของ log ในโครงการตัวเอง |
-| `GET` | `/api/v1/owner/access-logs` | ลูกบ้าน: log ที่ `house_id` = บ้านตัวเอง |
-| `GET` | `/api/v1/owner/access-logs/:log_id/image` | ลูกบ้าน: ภาพของ log บ้านตัวเองเท่านั้น |
+| `GET` | `/api/v1/admin/access-logs` | Admin: รายการ log ของโครงการ (`?from=&to=&decision=&method=&signed=1`) **พัฒนาแล้ว** |
+| `GET` | `/api/v1/admin/access-logs/:log_id/image` | Admin: ภาพของ log ในโครงการตัวเอง (`?kind=scene\|plate`) **พัฒนาแล้ว** |
+| `GET` | `/api/v1/images/:log_id/:kind?exp=&sig=` | ลิงก์ที่เซ็นแล้ว อายุ 7 วัน (CSV ของรายงาน) **พัฒนาแล้ว** |
+| `GET` | `/api/v1/owner/access-logs` | ลูกบ้าน: log ที่ `house_id` = บ้านตัวเอง (ยังไม่ทำ) |
+| `GET` | `/api/v1/owner/access-logs/:log_id/image` | ลูกบ้าน: ภาพของ log บ้านตัวเองเท่านั้น (ยังไม่ทำ) |
 
 -   ภาพหมดอายุแล้ว (R2 ลบแล้ว แต่ `image_url` ยังอยู่) → `404 IMAGE_EXPIRED`
 -   ทุกการดูภาพบันทึกใน `tb_audit_log` (`action` = `GET <route>`, `target_id` = `log_id`)
@@ -678,6 +682,10 @@ Schema อยู่ใน repo AAASQL: `migrations/0001_init.sql` (v1.1.0) + `mi
 `https://aaa-admin.pages.dev`; โครงการทดสอบ `PRJ-000` (เดิม `PRJ-001`) และ Admin คนแรก
 ข้อมูลทดสอบล้างแล้ว 2026-11-12; ฐานข้อมูลเก่า `d1-db-aaa` (schema v1.0 ว่าง) ลบแล้ว
 D1 เปลี่ยนชื่อจาก `db1-aaa` เป็น `aaa-d1` วันที่ 2026-11-25; `db1-aaa` ลบแล้ว
+22. (TODO) Visitor ไม่มี PIN / QR: กด `*<house_code>#` (เช่น `*9824#`) ที่ Keypad เพื่อขอรหัสจากบ้านผ่าน LINE
+    (แจ้งคนในบ้าน + รูปจากกล้อง → บ้านออก PIN / QR ให้) ต้องตกลงกับ SEMA ว่าส่งการกด `*…#` ขึ้นมาอย่างไร
+    และส่งรหัสกลับถึง Visitor ทางไหน; **ถ้าบ้านไม่ตอบ** จะทำอย่างไร ยังไม่ได้คิด
+23. (§8.6) วิดีโอสั้น 3–5 วินาทีต่อ event: กล้อง DS-TMC200-E1 / NVR ตัดคลิปได้หรือไม่ (ตอนนี้ทำเฉพาะรูป)
 
 ## 15. เอกสารส่งมอบที่ควรแยกกัน
 
