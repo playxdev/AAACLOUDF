@@ -8,7 +8,7 @@
 -   **ชื่อ (2026-11-03):** SEMA Micro Controller / SEMA Board เปลี่ยนชื่อเป็น **AAA Board**
     (SEMA ยังเป็นผู้พัฒนาบอร์ดและ SEMA Docker)
 -   **1.17:** รูปจากกล้องพัฒนาแล้ว (§8.6): รูปเต็มฉาก + รูปป้ายต่อ event, ผูก event กับบ้าน (`house_id`),
-    ลิงก์ที่เซ็นแล้ว 7 วันสำหรับ CSV, migration `0009` (ยังไม่ deploy); TODO §14 ข้อ 22 (Visitor ขอรหัสผ่าน Keypad `*<house_code>#`)
+    ลิงก์ที่เซ็นแล้ว 7 วันสำหรับ CSV, migration `0009` (deploy 2026-11-26, R2 `aaa-images` + ลบ 90 วัน); TODO §14 ข้อ 22 (Visitor ขอรหัสผ่าน Keypad `*<house_code>#`)
     และข้อ 23 (วิดีโอ 3–5 วินาที); Admin WebApp v2.6.0
 -   **1.16:** รหัสพื้นที่ส่วนกลางต่อโครงการ (`tb_project.common_area_code` ค่าเริ่มต้น `0000` → Guest Code `0000+1234`),
     แก้ไขรถ / บัตร / ผู้มาติดต่อ, ชื่อสั้นเป็นของคนในบ้าน, จังหวัดภาษาไทย, รายงานการเข้าออก (`/admin/access-logs` + filter),
